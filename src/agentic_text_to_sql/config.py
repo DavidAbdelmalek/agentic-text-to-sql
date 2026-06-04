@@ -3,6 +3,8 @@ scattered across modules. Loaded from .env (gitignored); see .env.example."""
 
 from __future__ import annotations
 
+import os
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -58,3 +60,14 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Single entry point. Cheap to call; pydantic-settings re-reads env each time."""
     return Settings()
+
+
+def superuser_dsn() -> str:
+    """BUILD-time superuser DSN (data ingest + semantic-layer build). The AGENT never uses
+    this — it only ever connects with the read-only role (Settings.agent_database_url)."""
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    user = os.environ.get("POSTGRES_SUPERUSER", "postgres")
+    pw = os.environ.get("POSTGRES_SUPERUSER_PASSWORD", "postgres")
+    db = os.environ.get("POSTGRES_DB", "warehouse")
+    return f"postgresql://{user}:{pw}@{host}:{port}/{db}"

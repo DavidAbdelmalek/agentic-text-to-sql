@@ -69,6 +69,20 @@ does that. **Trade-off:** occasional prompts for new commands; that's the point.
 pins (`~=`) keep upgrades deliberate. 3.11+ for `TypedDict`/typing ergonomics and speed.
 **Trade-off:** uv is newer than pip/poetry; the speed + lockfile determinism win for CI.
 
+## D12 — Schema retrieval: pgvector + a keyword fallback
+**Why:** the retrieval node returns only the relevant tables for a question, so the prompt
+stays small AND the model can reference fewer things — which, with the guardrail's identifier
+check, is the anti-hallucination story. Two backends behind one interface: **VectorRetriever**
+(pgvector cosine over **fastembed** BGE-small embeddings — ONNX, *no torch*, so it stays light
+and CPU-only) is the headline path that scales to hundreds of tables; **KeywordRetriever**
+(IDF-weighted token overlap, zero-dependency, deterministic) is the default for tests/CI and
+the offline path. **Honesty:** for a 5-table schema retrieval is easy and the two agree; the
+value is the *mechanism*. The keyword path has a real, demonstrated weakness — no stemmer, so
+"customers" misses "customer" unless mapped — which the vector path handles semantically; we
+keep both to make that trade-off explicit. Embeddings live in a separate `semantic` schema the
+read-only role is granted SELECT on — infra, not warehouse data. **Trade-off:** a one-time
+~90 MB model download (cached) for the vector path; the keyword path needs nothing.
+
 ## D11 — Real public data (pinned) over fully-synthetic
 **Why:** the warehouse is the **UCI Online Retail II** dataset (real UK/EU e-commerce
 invoices, 2009–2011), loaded from a **pinned** Hugging Face revision + commit sha into a

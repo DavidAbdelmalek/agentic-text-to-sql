@@ -1,7 +1,7 @@
 ---
 name: schema-explorer
 description: Introspects the Postgres warehouse (via the postgres-ro MCP server, or the scripts/introspect_schema.py fallback) and produces/refreshes the semantic layer — table + column descriptions, keys, and joinable paths — that the SQL-generation node consumes. Use whenever the schema changes or the semantic layer needs rebuilding.
-tools: Read, Grep, Glob, Bash, mcp__postgres-ro__list_schemas, mcp__postgres-ro__list_objects, mcp__postgres-ro__get_object_details, mcp__postgres-ro__execute_sql
+tools: Read, Grep, Glob, Write, Bash, mcp__postgres-ro__list_schemas, mcp__postgres-ro__list_objects, mcp__postgres-ro__get_object_details, mcp__postgres-ro__execute_sql
 model: inherit
 ---
 

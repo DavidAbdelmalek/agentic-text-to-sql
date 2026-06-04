@@ -21,10 +21,10 @@ these credentials; it only ever connects with the read-only role.
 
 from __future__ import annotations
 
-import os
-
 import psycopg
 from huggingface_hub import hf_hub_download
+
+from agentic_text_to_sql.config import superuser_dsn
 
 # --- Pinned source (do not bump casually; it changes the gold set) ----------
 HF_REPO_ID = "attik/Online-Retail-II-UCI"
@@ -50,15 +50,6 @@ RAW_COLUMNS = [
 ]
 
 
-def _superuser_dsn() -> str:
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    user = os.environ.get("POSTGRES_SUPERUSER", "postgres")
-    pw = os.environ.get("POSTGRES_SUPERUSER_PASSWORD", "postgres")
-    db = os.environ.get("POSTGRES_DB", "warehouse")
-    return f"postgresql://{user}:{pw}@{host}:{port}/{db}"
-
-
 def _download() -> str:
     print(f"downloading {HF_REPO_ID}@{HF_REVISION[:8]} :: {HF_FILENAME} ...")
     path = hf_hub_download(
@@ -74,15 +65,14 @@ def _download() -> str:
 def _load(csv_path: str) -> int:
     cols = ", ".join(f"{c} text" for c in RAW_COLUMNS)
     collist = ", ".join(RAW_COLUMNS)
-    with psycopg.connect(_superuser_dsn(), autocommit=True) as conn:
+    with psycopg.connect(superuser_dsn(), autocommit=True) as conn:
         conn.execute("SET client_encoding TO 'UTF8'")
         # Idempotent: rebuild the raw table from scratch each run.
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
         conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{RAW_TABLE}")
         conn.execute(f"CREATE TABLE {RAW_SCHEMA}.{RAW_TABLE} ({cols})")
         copy_sql = (
-            f"COPY {RAW_SCHEMA}.{RAW_TABLE} ({collist}) "
-            f"FROM STDIN WITH (FORMAT csv, HEADER true)"
+            f"COPY {RAW_SCHEMA}.{RAW_TABLE} ({collist}) FROM STDIN WITH (FORMAT csv, HEADER true)"
         )
         with (
             conn.cursor() as cur,

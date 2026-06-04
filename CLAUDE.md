@@ -73,5 +73,7 @@ The agent's read-only role is granted on `public` only — it can read the marts
 ## Build status
 Phase 1 done: permissions, read-only role + docker, MCP, subagents, skills, skeleton, CI.
 Phase 2 done: real-data ingest, dbt star schema + 42 passing tests, read-only role verified.
-Phases 3–8 (semantic layer, graph, tracing, eval, Terraform, docs) per the plan in README.
-Each phase pauses for review.
+Phase 3 done: introspection (`make introspect`) -> semantic_layer.yaml (authored by the
+schema-explorer subagent) -> pgvector store (`make semantic`); retriever with vector
+(fastembed/pgvector) + deterministic keyword backends; test-author wrote loader/retriever tests.
+Phases 4–8 (graph, tracing, eval, Terraform, docs) per the plan in README. Each phase pauses.
