@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast path: no DB needed. Lint, type-check, unit tests.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --group dev
+      - name: ruff
+        run: uv run ruff check src tests
+      - name: ruff format check
+        run: uv run ruff format --check src tests
+      - name: mypy
+        run: uv run mypy
+      - name: pytest (unit, no DB)
+        run: uv run pytest -m "not integration"
+
+  # DB path: Postgres+pgvector service, dbt build, integration tests, smoke eval.
+  # Smoke eval runs in MOCK mode (no LLM key in CI) — it validates the harness, not a model.
+  database:
+    runs-on: ubuntu-latest
+    services:
+      warehouse:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: warehouse
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_DB: warehouse
+      POSTGRES_SUPERUSER: postgres
+      POSTGRES_SUPERUSER_PASSWORD: postgres
+      AGENT_DB_USER: agent_ro
+      AGENT_DB_PASSWORD: agent_ro_pw
+      AGENT_DATABASE_URL: postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse
+      LLM_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --group dev
+      - name: Create read-only role + extensions
+        run: |
+          export PGPASSWORD=postgres
+          psql -h localhost -U postgres -d warehouse -f docker/initdb/01-extensions.sql
+          bash docker/initdb/02-create-readonly-role.sh
+        env:
+          POSTGRES_USER: postgres
+      # Phase 6 enables these — kept here so the wiring is visible from day one.
+      # Load downloads a pinned UCI Online Retail II revision from Hugging Face (needs network).
+      # - name: Load real data + dbt build (raw -> star)
+      #   run: uv run python -m agentic_text_to_sql.ingest && cd dbt && uv run dbt deps && uv run dbt build
+      # - name: Integration tests
+      #   run: uv run pytest -m integration
+      # - name: Smoke eval (mock mode)
+      #   run: uv run python -m agentic_text_to_sql.eval --smoke

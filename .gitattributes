@@ -1,0 +1,13 @@
+# Normalize line endings in the repo to LF. Critical for shell scripts: a CRLF
+# docker/initdb/*.sh breaks inside the Linux container ('\r' command not found).
+* text=auto eol=lf
+
+# Scripts that must be LF regardless of platform.
+*.sh   text eol=lf
+*.sql  text eol=lf
+
+# PowerShell is fine with LF; keep it LF too for consistency.
+*.ps1  text eol=lf
+
+# Lockfiles + data are treated as-is.
+*.lock text eol=lf

@@ -1,0 +1,22 @@
+name: agentic_text_to_sql
+version: "1.0.0"
+config-version: 2
+profile: agentic_text_to_sql
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - target
+  - dbt_packages
+
+# The raw data is extract-loaded into the `raw` schema by `make load` (see ingest.py),
+# exposed to dbt as a source. Models land in `public` so the read-only agent role
+# (granted SELECT on public only) reads the curated marts but never the raw schema.
+models:
+  agentic_text_to_sql:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

@@ -1,0 +1,17 @@
+# Committed on purpose: reads ONLY env vars, contains no secrets.
+# dbt builds as the SUPERUSER (it needs DDL). The agent NEVER uses these creds —
+# it connects with the read-only agent_ro role (AGENT_DATABASE_URL). This split is
+# the point: build-time write access is isolated from run-time query access.
+agentic_text_to_sql:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_SUPERUSER', 'postgres') }}"
+      password: "{{ env_var('POSTGRES_SUPERUSER_PASSWORD', 'postgres') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'warehouse') }}"
+      schema: public
+      threads: 4
+      sslmode: prefer

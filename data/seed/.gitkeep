@@ -1,0 +1,3 @@
+# Real data is downloaded (pinned UCI Online Retail II from HF) and bulk-loaded into the
+# Postgres `raw` schema by `make load` (src/agentic_text_to_sql/ingest.py). It is NOT
+# stored in the repo — the HF cache lives under the user's ~/.cache/huggingface.

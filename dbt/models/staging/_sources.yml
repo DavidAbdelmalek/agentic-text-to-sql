@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: >
+      UCI "Online Retail II" (CC BY 4.0), extract-loaded by `make load` (ingest.py) from a
+      pinned Hugging Face revision. Real UK online-retail invoices, 2009-12 .. 2011-12.
+    tables:
+      - name: online_retail
+        description: "One row per invoice line, as-loaded: all TEXT, uncleaned, dirty."
+        columns:
+          - name: invoice
+            description: "Invoice no.; a leading 'C' marks a cancellation."
+          - name: stock_code
+          - name: description
+          - name: quantity
+          - name: invoice_date
+          - name: price
+          - name: customer_id
+            description: "Often blank (guest) or float-formatted like '13085.0'."
+          - name: country

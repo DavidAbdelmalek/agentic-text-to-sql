@@ -1,0 +1,29 @@
+# One-command local stack. `docker compose up -d` brings up Postgres + pgvector.
+# Langfuse services are added in Phase 5 (behind the `observability` profile) so the
+# default `up` stays lean. Everything runs locally and free.
+services:
+  warehouse:
+    image: pgvector/pgvector:pg16
+    container_name: ttsql_warehouse
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse}
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres}
+      # Passed into init scripts so the read-only role matches .env
+      AGENT_DB_USER: ${AGENT_DB_USER:-agent_ro}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-agent_ro_pw}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    # Init scripts run ONCE, on first cluster creation, as the superuser.
+    volumes:
+      - warehouse_data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d ${POSTGRES_DB:-warehouse}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  warehouse_data:

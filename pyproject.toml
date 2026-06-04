@@ -1,0 +1,75 @@
+[project]
+name = "agentic-text-to-sql"
+version = "0.1.0"
+description = "Safe, observable, evaluated LangGraph text-to-SQL agent over a read-only Postgres warehouse."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Pinned to compatible-release ranges (~=) so `uv lock` produces a reproducible,
+# fully-pinned uv.lock. Bump deliberately, not by accident.
+dependencies = [
+    "langgraph~=0.2.0",
+    "langchain~=0.3.0",
+    "langchain-core~=0.3.0",
+    "langchain-openai~=0.2.0",
+    "langfuse~=2.50",
+    "psycopg[binary]~=3.2",
+    "pgvector~=0.3",
+    "sqlglot~=25.0",
+    "pydantic~=2.8",
+    "pydantic-settings~=2.4",
+    "fastapi~=0.115",
+    "uvicorn~=0.30",
+    "typer~=0.12",
+    "httpx~=0.27",
+    "tenacity~=9.0",
+]
+
+[project.optional-dependencies]
+# Local-and-free inference path. Kept optional so CI mock mode installs lean.
+local-llm = [
+    "sentence-transformers~=3.0",
+    "ollama~=0.3",
+]
+
+[project.scripts]
+ttsql = "agentic_text_to_sql.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff~=0.6",
+    "mypy~=1.11",
+    "pytest~=8.3",
+    "pytest-cov~=5.0",
+    "dbt-postgres~=1.8",
+    "huggingface-hub~=0.25",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_text_to_sql"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: needs a running Postgres (deselect with -m 'not integration')",
+]
