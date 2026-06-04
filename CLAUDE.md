@@ -76,4 +76,8 @@ Phase 2 done: real-data ingest, dbt star schema + 42 passing tests, read-only ro
 Phase 3 done: introspection (`make introspect`) -> semantic_layer.yaml (authored by the
 schema-explorer subagent) -> pgvector store (`make semantic`); retriever with vector
 (fastembed/pgvector) + deterministic keyword backends; test-author wrote loader/retriever tests.
-Phases 4–8 (graph, tracing, eval, Terraform, docs) per the plan in README. Each phase pauses.
+Phase 4 done: LangGraph agent (classify -> retrieve -> generate -> guard[sqlglot + EXPLAIN] ->
+execute[read-only] -> bounded reflect/repair -> summarize). LLM providers (Ollama/OpenAI/Azure
++ deterministic MockLLM). sql_guard + read-only client implemented; `ttsql ask "..."` runs it
+live; 36 tests (guardrail rules, bounded loop, read-only refusal). Runs offline via mock.
+Phases 5–8 (Langfuse tracing, FastAPI, eval harness, Terraform, docs) per README. Each pauses.

@@ -19,3 +19,4 @@ class AgentState(TypedDict, total=False):
     error: str | None
     repair_attempts: int  # bounded by Settings.sql_max_repair_retries
     answer: str
+    failed: bool

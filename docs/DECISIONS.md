@@ -69,6 +69,18 @@ does that. **Trade-off:** occasional prompts for new commands; that's the point.
 pins (`~=`) keep upgrades deliberate. 3.11+ for `TypedDict`/typing ergonomics and speed.
 **Trade-off:** uv is newer than pip/poetry; the speed + lockfile determinism win for CI.
 
+## D13 — Provider abstraction + a deterministic MockLLM
+**Why:** the agent's three model tasks (classify, generate SQL, summarize) sit behind one
+`LLM` interface with Ollama (local default), OpenAI/Azure (env), and a **MockLLM**. The mock
+returns real, guardrail-valid SQL for a small set of canonical questions and a safe default
+otherwise, so the *entire graph* runs with **no API key, no local model, no network** — which
+is what lets CI and the eval's offline mode exercise the orchestration, guard, and repair loop
+deterministically. **Trade-off:** the mock isn't a real model, so its "accuracy" is never
+reported as model accuracy — it validates the *system*, not the LLM. Swapping providers is one
+env var; nodes never change. The bounded repair loop is enforced structurally in the graph
+edges (`route_after_repair`), not in a prompt — tested to give up after exactly
+`max_retries + 1` generations with no DB access.
+
 ## D12 — Schema retrieval: pgvector + a keyword fallback
 **Why:** the retrieval node returns only the relevant tables for a question, so the prompt
 stays small AND the model can reference fewer things — which, with the guardrail's identifier

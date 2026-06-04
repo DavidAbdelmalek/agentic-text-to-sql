@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5-coder:7b"
     ollama_base_url: str = "http://localhost:11434"
     openai_api_key: str | None = None
+    openai_base_url: str | None = None
     azure_openai_api_key: str | None = None
     azure_openai_endpoint: str | None = None
     azure_openai_deployment: str | None = None
