@@ -46,16 +46,24 @@ class GuardResult:
 
 def _unknown_identifiers(stmt: exp.Expression, allowed: set[str]) -> list[str]:
     """Tables/columns referenced by the query that are not in the semantic layer. This is the
-    anti-hallucination check — a generated column that doesn't exist is caught here."""
+    anti-hallucination check — a generated column that doesn't exist is caught here.
+
+    Names the query introduces itself are legal even though they aren't in the semantic layer:
+    SELECT aliases (so `ORDER BY <alias>` / `HAVING <alias>` resolve) and CTE names (referenced
+    in a later FROM). Without this, a perfectly valid `SUM(x) AS total ... ORDER BY total` is
+    falsely rejected, which then burns the whole repair budget."""
+    local: set[str] = {a.alias for a in stmt.find_all(exp.Alias) if a.alias}
+    local |= {c.alias_or_name for c in stmt.find_all(exp.CTE)}
+
     bad: list[str] = []
     for table in stmt.find_all(exp.Table):
-        if table.name and table.name not in allowed:
+        if table.name and table.name not in allowed and table.name not in local:
             bad.append(table.name)
     for col in stmt.find_all(exp.Column):
         # Skip stars (SELECT *) and unqualified function output; check the bare column name.
         if isinstance(col.this, exp.Star):
             continue
-        if col.name and col.name not in allowed:
+        if col.name and col.name not in allowed and col.name not in local:
             bad.append(col.name)
     return sorted(set(bad))
 

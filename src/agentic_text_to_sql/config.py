@@ -19,9 +19,10 @@ class Settings(BaseSettings):
     )
 
     # --- LLM ---
-    llm_provider: str = "ollama"  # ollama | openai | azure | mock
+    llm_provider: str = "ollama"  # ollama | anthropic | openai | azure | mock
     llm_model: str = "qwen2.5-coder:7b"
     ollama_base_url: str = "http://localhost:11434"
+    anthropic_api_key: str | None = None  # reads ANTHROPIC_API_KEY
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     azure_openai_api_key: str | None = None
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
         """True when a real model can be reached. Eval falls back to mock mode otherwise."""
         if self.llm_provider == "mock":
             return False
+        if self.llm_provider == "anthropic":
+            return bool(self.anthropic_api_key)
         if self.llm_provider == "openai":
             return bool(self.openai_api_key)
         if self.llm_provider == "azure":

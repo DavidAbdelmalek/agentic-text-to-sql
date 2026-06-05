@@ -188,11 +188,69 @@ class OpenAILLM:
         )
 
 
+# --------------------------------------------------------------------------- Anthropic
+class AnthropicLLM:
+    """Anthropic Claude via the official `anthropic` SDK.
+
+    Notes (defensible choices):
+    - No `temperature`/`top_p` is sent: those are removed on Opus 4.8/4.7 (would 400), and we
+      want one provider that works across Claude models. Determinism for SQL isn't materially
+      worse without it.
+    - Thinking is left off (default) — SQL generation is a single, well-scoped call, not a
+      reasoning task; this keeps it fast and cheap.
+    - Prompt caching is intentionally NOT used: our prompts are well under Claude's ~1024–4096
+      token minimum cacheable prefix, so a cache breakpoint would only add a write premium with
+      zero reads. (See the prompt-caching minimums — caching pays off for large shared prefixes.)
+    """
+
+    _client: Any
+
+    def __init__(self, settings: Settings) -> None:
+        import anthropic
+
+        # SDK resolves ANTHROPIC_API_KEY from the env if api_key is None.
+        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._model = settings.llm_model
+
+    def _chat(self, system: str, user: str, max_tokens: int) -> str:
+        resp = self._client.messages.create(
+            model=self._model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return "".join(b.text for b in resp.content if b.type == "text")
+
+    def classify(self, question: str) -> str:
+        out = self._chat(
+            "Classify the question as one word: lookup, aggregate, or trend. Reply with the "
+            "word only.",
+            question,
+            max_tokens=16,
+        )
+        return out.strip().lower().split()[0] if out.strip() else "aggregate"
+
+    def generate_sql(self, question: str, schema_context: str, error: str | None) -> str:
+        user = f"Schema:\n{schema_context}\n\nQuestion: {question}"
+        if error:
+            user += f"\n\nThe previous attempt failed with:\n{error}\nFix it."
+        return _extract_sql(self._chat(_SQL_SYSTEM, user, max_tokens=1024))
+
+    def summarize(self, question: str, result_preview: str) -> str:
+        return self._chat(
+            "Answer the question in one or two sentences using the result rows, with numbers.",
+            f"Question: {question}\n\nResult:\n{result_preview}",
+            max_tokens=512,
+        )
+
+
 def get_llm(settings: Settings) -> LLM:
     """Pick a provider. Falls back to the deterministic MockLLM whenever a real model can't be
     reached, so the graph (and eval) always run."""
     if not settings.llm_enabled:
         return MockLLM()
+    if settings.llm_provider == "anthropic":
+        return AnthropicLLM(settings)
     if settings.llm_provider in ("openai", "azure"):
         return OpenAILLM(settings)
     if settings.llm_provider == "ollama":
