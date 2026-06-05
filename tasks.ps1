@@ -8,7 +8,8 @@ switch ($Target) {
     "help"       { Get-Content Makefile | Select-String '## ' | ForEach-Object { $_.Line } }
     "install"    { uv sync --all-extras --group dev }
     "up"         { docker compose up -d }
-    "down"       { docker compose down }
+    "obs-up"     { docker compose --profile observability up -d }
+    "down"       { docker compose --profile observability down }
     "logs"       { docker compose logs -f warehouse }
     "psql"       { $dsn = if ($env:AGENT_DATABASE_URL) { $env:AGENT_DATABASE_URL } else { "postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse" }; psql $dsn }
     "load"       { uv run python -m agentic_text_to_sql.ingest }

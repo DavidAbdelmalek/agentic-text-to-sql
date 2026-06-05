@@ -25,5 +25,53 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # --- Observability (opt-in): `docker compose --profile observability up -d` ---------------
+  # Self-hosted Langfuse v2. Keys are SEEDED headlessly via LANGFUSE_INIT_* so tracing works
+  # without a UI signup — the same keys go in .env (LANGFUSE_PUBLIC_KEY/SECRET_KEY). UI at
+  # http://localhost:3000 (login with the seeded email/password). Demo secrets only — rotate
+  # for anything real.
+  langfuse-db:
+    image: postgres:16
+    container_name: ttsql_langfuse_db
+    profiles: ["observability"]
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: ttsql_langfuse
+    profiles: ["observability"]
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: local-dev-nextauth-secret-change-me
+      SALT: local-dev-salt-change-me
+      TELEMETRY_ENABLED: "false"
+      # Headless seed: org + project + API keys + a login user.
+      LANGFUSE_INIT_ORG_ID: ttsql-org
+      LANGFUSE_INIT_PROJECT_ID: ttsql
+      LANGFUSE_INIT_PROJECT_NAME: agentic-text-to-sql
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-local-ttsql
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-local-ttsql
+      LANGFUSE_INIT_USER_EMAIL: dev@local.test
+      LANGFUSE_INIT_USER_NAME: Dev
+      LANGFUSE_INIT_USER_PASSWORD: localdev123
+    restart: unless-stopped
+
 volumes:
   warehouse_data:
+  langfuse_db_data:

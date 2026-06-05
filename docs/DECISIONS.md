@@ -69,6 +69,18 @@ does that. **Trade-off:** occasional prompts for new commands; that's the point.
 pins (`~=`) keep upgrades deliberate. 3.11+ for `TypedDict`/typing ergonomics and speed.
 **Trade-off:** uv is newer than pip/poetry; the speed + lockfile determinism win for CI.
 
+## D14 — Tracing via a callback handler, optional + self-hostable
+**Why:** observability is a headline. LangGraph runs each node as a LangChain runnable, so a
+single Langfuse **CallbackHandler** auto-traces classify/retrieve/generate/guard/execute/
+repair/summarize — inputs, outputs, timings, and how many repair loops ran — with no manual
+span code in the nodes. The handler is created only when Langfuse keys are set and any failure
+to build it returns None, so **tracing never breaks a query** (it's a no-op when unconfigured).
+Langfuse is self-hosted via an opt-in compose profile with **headlessly-seeded** keys
+(`LANGFUSE_INIT_*`), so traces work locally and free without a UI signup; it also points at
+Langfuse Cloud by changing env. **Trade-off:** the self-host profile adds a container + its own
+Postgres; kept behind a profile so the default `up` stays lean. Phase 6 reuses the same
+Langfuse to log eval scores.
+
 ## D13 — Provider abstraction + a deterministic MockLLM
 **Why:** the agent's three model tasks (classify, generate SQL, summarize) sit behind one
 `LLM` interface with Ollama (local default), OpenAI/Azure (env), and a **MockLLM**. The mock

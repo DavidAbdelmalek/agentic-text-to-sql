@@ -44,8 +44,14 @@ make up                  # Postgres 16 + pgvector + read-only role (docker compo
 make load && make dbt-build   # load real UCI data -> dbt star schema (~805k fact rows), tested
 make semantic            # build the semantic layer (anti-hallucination ground truth)
 make run-cli Q="Top 5 countries by revenue in 2011"
+make run-api             # FastAPI: POST /ask {"question": "..."}  (http://localhost:8000)
 make eval                # execution-accuracy eval over the gold set
+
+make obs-up              # optional: self-hosted Langfuse tracing UI (http://localhost:3000)
 ```
+Every agent run traces each node (classify → retrieve → generate → guard → execute → repair →
+summarize) to Langfuse when keys are set — see exactly what SQL was generated and how many
+repair loops ran, per question.
 On Windows without `make`: use `./tasks.ps1 <target>`. Cloud LLM? Set `LLM_PROVIDER` +
 keys in `.env` (OpenAI/Azure). No key at all? Eval still runs in deterministic **mock mode**.
 

@@ -23,6 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from agentic_text_to_sql.agent.llm import get_llm
 from agentic_text_to_sql.agent.nodes import AgentNodes
 from agentic_text_to_sql.agent.state import AgentState
+from agentic_text_to_sql.agent.tracing import get_langfuse_handler
 from agentic_text_to_sql.config import Settings, get_settings
 from agentic_text_to_sql.db.read_only_client import ReadOnlyClient
 from agentic_text_to_sql.semantic_layer.loader import SemanticLayer, load_semantic_layer
@@ -73,9 +74,20 @@ def build_default_nodes(settings: Settings | None = None) -> AgentNodes:
 
 
 def run_agent(question: str, settings: Settings | None = None) -> AgentState:
-    """Convenience entry point: build the default graph and answer one question."""
+    """Convenience entry point: build the default graph and answer one question, tracing every
+    node to Langfuse when it's configured (no-op otherwise)."""
+    settings = settings or get_settings()
     app = build_graph(build_default_nodes(settings))
-    final: AgentState = app.invoke({"question": question, "repair_attempts": 0})
+
+    config: dict[str, Any] = {"run_name": "ttsql-agent", "metadata": {"question": question}}
+    handler = get_langfuse_handler(settings)
+    if handler is not None:
+        config["callbacks"] = [handler]
+
+    final: AgentState = app.invoke({"question": question, "repair_attempts": 0}, config=config)
+
+    if handler is not None:
+        handler.flush()
     return final
 
 

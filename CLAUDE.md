@@ -80,4 +80,6 @@ Phase 4 done: LangGraph agent (classify -> retrieve -> generate -> guard[sqlglot
 execute[read-only] -> bounded reflect/repair -> summarize). LLM providers (Ollama/OpenAI/Azure
 + deterministic MockLLM). sql_guard + read-only client implemented; `ttsql ask "..."` runs it
 live; 36 tests (guardrail rules, bounded loop, read-only refusal). Runs offline via mock.
-Phases 5–8 (Langfuse tracing, FastAPI, eval harness, Terraform, docs) per README. Each pauses.
+Phase 5 done: Langfuse tracing (callback handler, no-op without keys) on every node; self-host
+via `make obs-up` (compose observability profile, headless-seeded keys); FastAPI `POST /ask`.
+Phases 6–8 (eval harness, Terraform, docs) per README. Each pauses.

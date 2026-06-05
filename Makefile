@@ -19,8 +19,11 @@ up: ## Start Postgres + pgvector (one command)
 	  until docker compose exec -T warehouse pg_isready -U $${POSTGRES_SUPERUSER:-postgres} >/dev/null 2>&1; do sleep 1; done
 	@echo "warehouse ready."
 
+obs-up: ## Start self-hosted Langfuse (tracing UI at http://localhost:3000)
+	docker compose --profile observability up -d
+
 down: ## Stop containers (keeps volume)
-	docker compose down
+	docker compose --profile observability down
 
 logs: ## Tail warehouse logs
 	docker compose logs -f warehouse
