@@ -61,12 +61,19 @@ jobs:
           enable-cache: true
       - run: uv sync --all-extras --group dev
       - name: Create read-only role + extensions
+        # The init scripts are written for the in-container Unix socket; on the runner the
+        # Postgres service is TCP at localhost, so point psql there via PG* env vars (psql
+        # honors PGHOST/PGPORT/PGUSER/PGPASSWORD when -h is absent).
         run: |
-          export PGPASSWORD=postgres
-          psql -h localhost -U postgres -d warehouse -f docker/initdb/01-extensions.sql
+          psql -f docker/initdb/01-extensions.sql
           bash docker/initdb/02-create-readonly-role.sh
         env:
           POSTGRES_USER: postgres
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: warehouse
       # Load downloads a pinned UCI Online Retail II revision from Hugging Face (needs network).
       - name: Load real data (raw schema)
         run: uv run python -m agentic_text_to_sql.ingest
