@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) and fill in to apply against a real Snowflake account.
+organization_name = "MYORG"
+account_name      = "MYACCOUNT"
+admin_user        = "TF_ADMIN"
+admin_password    = "change-me"
+agent_user        = "TTSQL_AGENT"
+# warehouse       = "WH_TTSQL"
+# database        = "WAREHOUSE"
+# schema          = "PUBLIC"

@@ -85,4 +85,7 @@ via `make obs-up` (compose observability profile, headless-seeded keys); FastAPI
 Phase 6 done: eval harness (18-Q gold set, `make eval` / `make eval-smoke`). Execution accuracy
 (multiset compare, primary) + structural similarity (secondary) + retrieval correctness; logs
 3 scores/question to Langfuse; offline mock mode; CI smoke gate (mock + keyword, exec_acc==1.0).
-55 tests total. Phases 7–8 (Terraform, docs polish) per README. Each pauses.
+55 tests total.
+Phase 7 done: Terraform — `terraform/postgres` (read-only role as IaC, alt to the init script)
++ `terraform/snowflake` (documented cloud read-only variant). Both `terraform validate` clean.
+Phase 8 (docs/README polish + deprecation cleanup) remains.

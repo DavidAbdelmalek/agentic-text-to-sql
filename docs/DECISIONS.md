@@ -69,6 +69,19 @@ does that. **Trade-off:** occasional prompts for new commands; that's the point.
 pins (`~=`) keep upgrades deliberate. 3.11+ for `TypedDict`/typing ergonomics and speed.
 **Trade-off:** uv is newer than pip/poetry; the speed + lockfile determinism win for CI.
 
+## D16 — The read-only role as Terraform (and it ports to Snowflake)
+**Why:** the read-only boundary is the system's most important control, so it shouldn't be a
+one-off `GRANT` someone ran by hand — it's expressed as reviewed, version-controlled,
+reproducible **Terraform**. `terraform/postgres` (cyrilgdn/postgresql) creates `agent_ro` with
+exactly `CONNECT`/`USAGE`/`SELECT` + default privileges; `terraform/snowflake`
+(snowflake-labs/snowflake) is the documented cloud mirror — an `AGENT_RO` account role with
+`USAGE` + `SELECT` on current **and future** tables/views and no write/DDL anywhere, the same
+model on a cloud warehouse. Both `terraform validate` clean. **Trade-off:** the docker init
+script stays the zero-config default for `make up` (you run init OR Terraform, not both — a
+role can't be created twice); Terraform is the production-grade path. The data layer ports
+alongside via `dbt-postgres` → `dbt-snowflake` behind the same `ReadOnlyClient` interface
+(D10). This is the "the safety model works on our warehouse" answer, as code.
+
 ## D15 — Eval: result-set comparison details + a deterministic gate
 **Why:** execution accuracy compares result *sets*, normalized so genuine equality survives
 noise: numerics rounded to 2dp, nulls marked explicitly, and **cells sorted within each row**
