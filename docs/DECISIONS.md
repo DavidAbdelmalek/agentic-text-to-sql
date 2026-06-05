@@ -69,6 +69,23 @@ does that. **Trade-off:** occasional prompts for new commands; that's the point.
 pins (`~=`) keep upgrades deliberate. 3.11+ for `TypedDict`/typing ergonomics and speed.
 **Trade-off:** uv is newer than pip/poetry; the speed + lockfile determinism win for CI.
 
+## D15 — Eval: result-set comparison details + a deterministic gate
+**Why:** execution accuracy compares result *sets*, normalized so genuine equality survives
+noise: numerics rounded to 2dp, nulls marked explicitly, and **cells sorted within each row**
+so the agent naming/ordering its output columns differently from the reference doesn't cause a
+false fail. Row order is ignored (multiset/`Counter` compare) unless the question is
+`ordered: true` (e.g. a ranked top-N or a quarter-by-quarter series), where rows compare as a
+sequence. **Known property:** within-row cell sorting makes the compare column-order-insensitive
+even for `ordered` questions — a deliberate robustness choice; it could mask a genuine
+column-position swap, which is acceptable for analytical questions where the *set of values* is
+the answer. **Reference-SQL trust:** accuracy rides on the gold `reference_sql` being correct —
+the headline failure mode — so the gold queries are reviewed and kept simple. The **smoke**
+subset is phrased to match the deterministic MockLLM fixtures, so `make eval-smoke` scores 1.0
+offline and acts as a stable CI gate (mock LLM + keyword retriever, no model/key/network).
+Structural similarity stays a secondary diagnostic only (a correct query can look very
+different from the reference — proven by a gold item scoring 0.91 similarity while failing
+execution).
+
 ## D14 — Tracing via a callback handler, optional + self-hostable
 **Why:** observability is a headline. LangGraph runs each node as a LangChain runnable, so a
 single Langfuse **CallbackHandler** auto-traces classify/retrieve/generate/guard/execute/

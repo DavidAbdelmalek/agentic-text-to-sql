@@ -51,7 +51,9 @@ jobs:
       AGENT_DB_USER: agent_ro
       AGENT_DB_PASSWORD: agent_ro_pw
       AGENT_DATABASE_URL: postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse
+      # Deterministic offline path: mock LLM + keyword retriever (no model download, no API key).
       LLM_PROVIDER: mock
+      EMBED_PROVIDER: keyword
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -65,11 +67,11 @@ jobs:
           bash docker/initdb/02-create-readonly-role.sh
         env:
           POSTGRES_USER: postgres
-      # Phase 6 enables these — kept here so the wiring is visible from day one.
       # Load downloads a pinned UCI Online Retail II revision from Hugging Face (needs network).
-      # - name: Load real data + dbt build (raw -> star)
-      #   run: uv run python -m agentic_text_to_sql.ingest && cd dbt && uv run dbt deps && uv run dbt build
-      # - name: Integration tests
-      #   run: uv run pytest -m integration
-      # - name: Smoke eval (mock mode)
-      #   run: uv run python -m agentic_text_to_sql.eval --smoke
+      - name: Load real data (raw schema)
+        run: uv run python -m agentic_text_to_sql.ingest
+      - name: dbt build (raw -> star + tests)
+        run: cd dbt && uv run dbt deps && uv run dbt build
+      # Smoke eval: mock LLM + keyword retriever -> deterministic. Gates on exec accuracy == 1.0.
+      - name: Smoke eval
+        run: uv run python -m agentic_text_to_sql.eval --smoke

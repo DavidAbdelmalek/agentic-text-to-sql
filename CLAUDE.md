@@ -82,4 +82,7 @@ execute[read-only] -> bounded reflect/repair -> summarize). LLM providers (Ollam
 live; 36 tests (guardrail rules, bounded loop, read-only refusal). Runs offline via mock.
 Phase 5 done: Langfuse tracing (callback handler, no-op without keys) on every node; self-host
 via `make obs-up` (compose observability profile, headless-seeded keys); FastAPI `POST /ask`.
-Phases 6–8 (eval harness, Terraform, docs) per README. Each pauses.
+Phase 6 done: eval harness (18-Q gold set, `make eval` / `make eval-smoke`). Execution accuracy
+(multiset compare, primary) + structural similarity (secondary) + retrieval correctness; logs
+3 scores/question to Langfuse; offline mock mode; CI smoke gate (mock + keyword, exec_acc==1.0).
+55 tests total. Phases 7–8 (Terraform, docs polish) per README. Each pauses.

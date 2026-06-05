@@ -60,11 +60,19 @@ Primary metric: **execution accuracy** (does the agent's result set match the re
 plus SQL structural similarity (diagnostic) and retrieval correctness (right tables?).
 Methodology + failure modes: [`eval-methodology` skill](.claude/skills/eval-methodology/SKILL.md).
 
-| Metric | Result |
-|---|---|
-| Execution accuracy | _populated in Phase 6_ |
-| Retrieval precision/recall | _populated in Phase 6_ |
-| Avg repairs / question | _populated in Phase 6_ |
+18-question gold set; `make eval` (or `make eval-smoke` for the CI subset). Numbers below are
+the **deterministic mock baseline** (no LLM key) — they validate the harness + scoring, not a
+model. Set `LLM_PROVIDER=ollama|openai|azure` for real model accuracy across the full set.
+
+| Run | Execution accuracy | Retrieval ok-rate | Mean struct. sim |
+|---|---|---|---|
+| Smoke subset (mock, CI gate) | **1.00** (6/6) | 1.00 | 0.997 |
+| Full set (mock baseline) | 0.33 (6/18) | 0.89 | 0.75 |
+
+The mock only knows ~6 query patterns, so the full-set mock score is expected to be low — that
+gap is what a real model closes. Note q14 scored 0.91 structural similarity yet **failed**
+execution accuracy — exactly why structural similarity is a secondary diagnostic, never a gate.
+Every run logs `execution_accuracy`, `retrieval_recall`, and `structural_similarity` to Langfuse.
 
 ## Tech stack
 Python · LangGraph · LangChain · Langfuse · Postgres + pgvector · dbt (dbt-postgres;

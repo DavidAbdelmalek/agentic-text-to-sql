@@ -1,0 +1,181 @@
+# Gold evaluation set for the UCI Online Retail II star schema.
+# Each item: a natural-language question, a known-correct reference SQL, the tables the
+# retriever should surface (gold_tables), whether row order matters (ordered), and a `smoke`
+# flag marking the CI-gate subset. The harness runs BOTH the agent's SQL and reference_sql
+# live and compares result sets (execution accuracy) — so expected results are not hardcoded;
+# correctness rides on the reference SQL (a documented failure mode — see eval-methodology).
+#
+# The `smoke` items are phrased to align with the deterministic MockLLM fixtures, so the smoke
+# eval passes offline (no LLM key) and acts as a stable CI gate. A real model is expected to
+# answer the full set.
+questions:
+  - id: q01
+    question: "Total revenue by country"
+    reference_sql: >
+      SELECT c.country, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      GROUP BY c.country ORDER BY revenue_gbp DESC LIMIT 100
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: true
+
+  - id: q02
+    question: "Total revenue by region"
+    reference_sql: >
+      SELECT c.region, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      GROUP BY c.region ORDER BY revenue_gbp DESC LIMIT 100
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: true
+
+  - id: q03
+    question: "Top 5 products by revenue"
+    reference_sql: >
+      SELECT p.product_name, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_product p ON f.product_key = p.product_key
+      GROUP BY p.product_name ORDER BY revenue_gbp DESC LIMIT 5
+    gold_tables: [fct_sales, dim_product]
+    ordered: false
+    smoke: true
+
+  - id: q04
+    question: "Monthly revenue by year and month"
+    reference_sql: >
+      SELECT d.year, d.month, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_date d ON f.date_key = d.date_key
+      GROUP BY d.year, d.month ORDER BY d.year, d.month LIMIT 100
+    gold_tables: [fct_sales, dim_date]
+    ordered: false
+    smoke: true
+
+  - id: q05
+    question: "Total revenue by customer, top 10"
+    reference_sql: >
+      SELECT f.customer_key, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f GROUP BY f.customer_key ORDER BY revenue_gbp DESC LIMIT 10
+    gold_tables: [fct_sales]
+    ordered: false
+    smoke: true
+
+  - id: q06
+    question: "What is the total revenue overall?"
+    reference_sql: "SELECT ROUND(SUM(revenue_gbp), 2) AS total_revenue_gbp FROM fct_sales LIMIT 1"
+    gold_tables: [fct_sales]
+    ordered: false
+    smoke: true
+
+  - id: q07
+    question: "How many distinct customers are there?"
+    reference_sql: "SELECT COUNT(DISTINCT customer_key) AS n_customers FROM fct_sales LIMIT 1"
+    gold_tables: [fct_sales]
+    ordered: false
+    smoke: false
+
+  - id: q08
+    question: "How many orders (invoices) were placed?"
+    reference_sql: "SELECT COUNT(DISTINCT invoice_no) AS n_invoices FROM fct_sales LIMIT 1"
+    gold_tables: [fct_sales]
+    ordered: false
+    smoke: false
+
+  - id: q09
+    question: "Total quantity sold per country"
+    reference_sql: >
+      SELECT c.country, SUM(f.quantity) AS units
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      GROUP BY c.country ORDER BY units DESC LIMIT 100
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: false
+
+  - id: q10
+    question: "What was the total revenue in 2011?"
+    reference_sql: >
+      SELECT ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_date d ON f.date_key = d.date_key
+      WHERE d.year = 2011 LIMIT 1
+    gold_tables: [fct_sales, dim_date]
+    ordered: false
+    smoke: false
+
+  - id: q11
+    question: "Top 10 customers by revenue in Germany"
+    reference_sql: >
+      SELECT f.customer_key, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      WHERE c.country = 'Germany' GROUP BY f.customer_key ORDER BY revenue_gbp DESC LIMIT 10
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: false
+
+  - id: q12
+    question: "What is the average order value?"
+    reference_sql: >
+      SELECT ROUND(AVG(inv_total), 2) AS avg_order_value
+      FROM (SELECT invoice_no, SUM(revenue_gbp) AS inv_total FROM fct_sales GROUP BY invoice_no) s
+      LIMIT 1
+    gold_tables: [fct_sales]
+    ordered: false
+    smoke: false
+
+  - id: q13
+    question: "Revenue by quarter in 2011"
+    reference_sql: >
+      SELECT d.quarter, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_date d ON f.date_key = d.date_key
+      WHERE d.year = 2011 GROUP BY d.quarter ORDER BY d.quarter LIMIT 100
+    gold_tables: [fct_sales, dim_date]
+    ordered: true
+    smoke: false
+
+  - id: q14
+    question: "Top 5 countries by revenue excluding the United Kingdom"
+    reference_sql: >
+      SELECT c.country, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      WHERE c.country <> 'United Kingdom'
+      GROUP BY c.country ORDER BY revenue_gbp DESC LIMIT 5
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: false
+
+  - id: q15
+    question: "Revenue on weekends versus weekdays"
+    reference_sql: >
+      SELECT d.is_weekend, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_date d ON f.date_key = d.date_key
+      GROUP BY d.is_weekend ORDER BY d.is_weekend LIMIT 10
+    gold_tables: [fct_sales, dim_date]
+    ordered: false
+    smoke: false
+
+  - id: q16
+    question: "Top 5 products by quantity sold"
+    reference_sql: >
+      SELECT p.product_name, SUM(f.quantity) AS units
+      FROM fct_sales f JOIN dim_product p ON f.product_key = p.product_key
+      GROUP BY p.product_name ORDER BY units DESC LIMIT 5
+    gold_tables: [fct_sales, dim_product]
+    ordered: false
+    smoke: false
+
+  - id: q17
+    question: "Monthly revenue in 2011 by month"
+    reference_sql: >
+      SELECT d.month, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_date d ON f.date_key = d.date_key
+      WHERE d.year = 2011 GROUP BY d.month ORDER BY d.month LIMIT 100
+    gold_tables: [fct_sales, dim_date]
+    ordered: true
+    smoke: false
+
+  - id: q18
+    question: "Which country in the DACH region has the highest revenue?"
+    reference_sql: >
+      SELECT c.country, ROUND(SUM(f.revenue_gbp), 2) AS revenue_gbp
+      FROM fct_sales f JOIN dim_country c ON f.country_key = c.country_key
+      WHERE c.region = 'DACH' GROUP BY c.country ORDER BY revenue_gbp DESC LIMIT 1
+    gold_tables: [fct_sales, dim_country]
+    ordered: false
+    smoke: false
