@@ -88,4 +88,6 @@ Phase 6 done: eval harness (18-Q gold set, `make eval` / `make eval-smoke`). Exe
 55 tests total.
 Phase 7 done: Terraform — `terraform/postgres` (read-only role as IaC, alt to the init script)
 + `terraform/snowflake` (documented cloud read-only variant). Both `terraform validate` clean.
-Phase 8 (docs/README polish + deprecation cleanup) remains.
+Phase 8 done: docs polish (README/ARCHITECTURE/DECISIONS D1–D16) + deprecation cleanup (dbt
+generic-test syntax modernized -> dbt build WARN=0; pytest pending-deprecation filtered).
+ALL 8 PHASES COMPLETE — 7 commits, 55 unit tests, 42 dbt tests, CI green, all run live.

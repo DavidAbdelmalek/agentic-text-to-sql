@@ -5,16 +5,21 @@ models:
     description: "Cleaned, typed sales lines (grain: one invoice line). Currency: GBP."
     columns:
       - name: invoice_no
-        tests: [not_null]
+        data_tests: [not_null]
       - name: customer_id
-        tests: [not_null]
+        data_tests: [not_null]
       - name: stock_code
-        tests: [not_null]
+        data_tests: [not_null]
       - name: quantity
-        tests:
+        data_tests:
           - not_null
-          - dbt_utils.accepted_range: { min_value: 1 }
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
       - name: unit_price_gbp
-        tests:
+        data_tests:
           - not_null
-          - dbt_utils.accepted_range: { min_value: 0, inclusive: false }
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false

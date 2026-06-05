@@ -83,7 +83,7 @@ pytest, dbt build, smoke eval) · uv.
 ```
 src/    agent graph + nodes, semantic_layer, sql_guard, read-only db client, eval, api, cli
 dbt/    Kimball star schema + tests        terraform/  local + Snowflake read-only variant
-docker/ Postgres init: extensions + read-only role     data/  seed · semantic layer · gold set
+docker/ Postgres init: extensions + read-only role     data/  semantic layer · eval gold set
 .claude/ permissions · subagents · skills  .mcp.json  read-only Postgres MCP for introspection
 docs/   ARCHITECTURE.md · DECISIONS.md      tests/  pytest unit + integration
 ```

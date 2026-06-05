@@ -5,62 +5,81 @@ models:
     description: "Customer dimension (grain: one row per customer). Country = modal country."
     columns:
       - name: customer_key
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: customer_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
 
   - name: dim_product
     description: "Product dimension (grain: one row per stock code). Modal description."
     columns:
       - name: product_key
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: stock_code
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
 
   - name: dim_country
     description: "Country dimension with DACH / Europe / Rest of World region rollup."
     columns:
       - name: country_key
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: country
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: region
-        tests:
-          - accepted_values: { values: ["DACH", "Europe", "Rest of World"] }
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["DACH", "Europe", "Rest of World"]
 
   - name: dim_date
     description: "Calendar date dimension, 2009-12-01 .. 2011-12-31."
     columns:
       - name: date_key
         description: "YYYYMMDD integer PK; fact FK."
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
 
   - name: fct_sales
     description: "Sales fact. Grain: one invoice line. Measures in GBP."
     columns:
       - name: sales_key
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       # FK integrity — the headline Kimball tests: every fact key resolves to a dimension.
       - name: customer_key
-        tests:
+        data_tests:
           - not_null
-          - relationships: { to: ref('dim_customer'), field: customer_key }
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
       - name: product_key
-        tests:
+        data_tests:
           - not_null
-          - relationships: { to: ref('dim_product'), field: product_key }
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
       - name: country_key
-        tests:
+        data_tests:
           - not_null
-          - relationships: { to: ref('dim_country'), field: country_key }
+          - relationships:
+              arguments:
+                to: ref('dim_country')
+                field: country_key
       - name: date_key
-        tests:
+        data_tests:
           - not_null
-          - relationships: { to: ref('dim_date'), field: date_key }
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
       - name: revenue_gbp
-        tests:
+        data_tests:
           - not_null
-          - dbt_utils.accepted_range: { min_value: 0, inclusive: false }
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false
       - name: quantity
-        tests:
-          - dbt_utils.accepted_range: { min_value: 1 }
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1

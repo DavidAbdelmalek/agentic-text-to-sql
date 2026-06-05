@@ -76,3 +76,7 @@ addopts = "-q"
 markers = [
     "integration: needs a running Postgres (deselect with -m 'not integration')",
 ]
+# Silence an upstream LangGraph/LangChain pending-deprecation emitted on import (not our code).
+filterwarnings = [
+    "ignore::PendingDeprecationWarning",
+]
