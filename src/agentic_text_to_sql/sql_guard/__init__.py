@@ -52,18 +52,23 @@ def _unknown_identifiers(stmt: exp.Expression, allowed: set[str]) -> list[str]:
     SELECT aliases (so `ORDER BY <alias>` / `HAVING <alias>` resolve) and CTE names (referenced
     in a later FROM). Without this, a perfectly valid `SUM(x) AS total ... ORDER BY total` is
     falsely rejected, which then burns the whole repair budget."""
-    local: set[str] = {a.alias for a in stmt.find_all(exp.Alias) if a.alias}
-    local |= {c.alias_or_name for c in stmt.find_all(exp.CTE)}
+    # Case-insensitive: Snowflake stores unquoted identifiers upper-case, the semantic layer is
+    # lower-case, and the model may emit either.
+    allowed_ci = {a.lower() for a in allowed}
+    local = {a.alias.lower() for a in stmt.find_all(exp.Alias) if a.alias}
+    local |= {c.alias_or_name.lower() for c in stmt.find_all(exp.CTE)}
 
     bad: list[str] = []
     for table in stmt.find_all(exp.Table):
-        if table.name and table.name not in allowed and table.name not in local:
+        name = (table.name or "").lower()
+        if name and name not in allowed_ci and name not in local:
             bad.append(table.name)
     for col in stmt.find_all(exp.Column):
         # Skip stars (SELECT *) and unqualified function output; check the bare column name.
         if isinstance(col.this, exp.Star):
             continue
-        if col.name and col.name not in allowed and col.name not in local:
+        name = (col.name or "").lower()
+        if name and name not in allowed_ci and name not in local:
             bad.append(col.name)
     return sorted(set(bad))
 
@@ -73,7 +78,7 @@ def review(sql: str, allowed_identifiers: set[str], default_limit: int) -> Guard
 
     # 1. Parseable?
     try:
-        statements = sqlglot.parse(sql, read="postgres")
+        statements = sqlglot.parse(sql, read="snowflake")
     except ParseError as e:
         return GuardResult(Verdict.REJECT, [f"unparseable SQL: {e}"])
 
@@ -105,7 +110,7 @@ def review(sql: str, allowed_identifiers: set[str], default_limit: int) -> Guard
         return GuardResult(
             Verdict.REPAIR,
             [f"no LIMIT present; injected LIMIT {default_limit}"],
-            repaired_sql=repaired.sql(dialect="postgres"),
+            repaired_sql=repaired.sql(dialect="snowflake"),
         )
 
     return GuardResult(Verdict.APPROVE, reasons)

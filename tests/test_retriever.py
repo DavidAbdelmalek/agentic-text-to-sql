@@ -1,24 +1,22 @@
-"""Phase 3 tests for schema retrieval.
+"""Tests for schema retrieval.
 
-The unit tests cover the deterministic, zero-dependency `KeywordRetriever` and
-the `get_retriever` factory's non-local path. They run on CI's fast lane with no
-database. One `@pytest.mark.integration` test exercises the pgvector path only
-when the embedding store is reachable, and skips cleanly otherwise.
+Cover the deterministic, zero-dependency `KeywordRetriever` and the `get_retriever` factory.
+They run on CI's fast lane with no database. The retriever is no longer in the agent hot path
+(the full schema is sent), but it stays as the eval's retrieval-scoring target and the
+documented scale swap-in, so its behaviour is still pinned.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from agentic_text_to_sql.config import Settings, get_settings
+from agentic_text_to_sql.config import Settings
 from agentic_text_to_sql.semantic_layer.loader import load_semantic_layer
 from agentic_text_to_sql.semantic_layer.retriever import (
     KeywordRetriever,
     Retrieved,
     get_retriever,
 )
-
-EXPECTED_TABLES = {"fct_sales", "dim_customer", "dim_product", "dim_country", "dim_date"}
 
 
 @pytest.fixture
@@ -74,33 +72,7 @@ def test_keyword_retriever_respects_k(layer) -> None:
     assert len(results) <= 2
 
 
-def test_get_retriever_non_local_returns_keyword(layer) -> None:
-    """Any non-'local' embed_provider must yield a KeywordRetriever with no DB
-    connection and no model load."""
-    settings = Settings(embed_provider="keyword")
-    retriever = get_retriever(settings, layer)
+def test_get_retriever_returns_keyword(layer) -> None:
+    """The factory yields a KeywordRetriever with no DB connection and no model load."""
+    retriever = get_retriever(Settings(), layer)
     assert isinstance(retriever, KeywordRetriever)
-
-
-def test_get_retriever_mock_provider_returns_keyword(layer) -> None:
-    settings = Settings(embed_provider="mock")
-    retriever = get_retriever(settings, layer)
-    assert isinstance(retriever, KeywordRetriever)
-
-
-@pytest.mark.integration
-def test_vector_retriever_when_store_reachable() -> None:
-    """If semantic.table_embeddings exists, retrieve() returns known table names;
-    otherwise skip cleanly (no store / no DB / no model)."""
-    from agentic_text_to_sql.semantic_layer.retriever import VectorRetriever
-
-    settings = get_settings()
-    layer = load_semantic_layer()
-    try:
-        retriever = VectorRetriever(settings, layer)
-    except Exception as exc:  # noqa: BLE001 — store/DB/model not available in this env
-        pytest.skip(f"vector store not reachable: {exc}")
-
-    results = retriever.retrieve("total revenue by country", k=3)
-    assert results, "reachable store should return at least one table"
-    assert {x.table for x in results} <= EXPECTED_TABLES

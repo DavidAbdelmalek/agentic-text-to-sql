@@ -1,24 +1,23 @@
 """Graph nodes. Each takes the AgentState and returns a partial update (LangGraph merges it).
-Dependencies (LLM, retriever, DB client, semantic layer) are injected via AgentNodes so the
-nodes stay pure-ish and testable.
+Dependencies (LLM, DB client, semantic layer) are injected via AgentNodes so the nodes stay
+pure-ish and testable.
 
 The headline pieces live here: the guard node (static checks + EXPLAIN before execution) and
-the bounded reflect/repair routing.
+the bounded reflect/repair routing. The full semantic layer is sent to the model on every
+generation — for a fixed 5-table star, retrieval can only drop a table the query needs, and
+the identifier guard (not retrieval) is the anti-hallucination backstop.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-import psycopg
-
 from agentic_text_to_sql import sql_guard
-from agentic_text_to_sql.agent.llm import LLM
+from agentic_text_to_sql.agent.llm import CANNOT_ANSWER, LLM
 from agentic_text_to_sql.agent.state import AgentState
 from agentic_text_to_sql.config import Settings
 from agentic_text_to_sql.db.read_only_client import ReadOnlyClient
 from agentic_text_to_sql.semantic_layer.loader import SemanticLayer
-from agentic_text_to_sql.semantic_layer.retriever import Retriever
 
 _MAX_PREVIEW_ROWS = 20
 
@@ -50,62 +49,69 @@ def _render_rows(columns: list[str], rows: list[tuple[object, ...]]) -> str:
 class AgentNodes:
     settings: Settings
     llm: LLM
-    retriever: Retriever
     client: ReadOnlyClient
     layer: SemanticLayer
+    schema_context: str  # full schema rendered once at build time (all tables)
+    all_table_names: list[str]
 
     # --- nodes -------------------------------------------------------------
-    def classify(self, state: AgentState) -> AgentState:
-        return {"question_class": self.llm.classify(state["question"])}
-
-    def retrieve(self, state: AgentState) -> AgentState:
-        hits = self.retriever.retrieve(state["question"], k=4)
-        tables = [h.table for h in hits]
-        return {
-            "retrieved_tables": tables,
-            "schema_context": render_schema(self.layer, tables),
-        }
-
     def generate(self, state: AgentState) -> AgentState:
+        """Generate SQL via LLM from the full schema. On repair, passes prior error for fix."""
         # Note: we do NOT clear state['error'] here — generate consumes the last error to
         # repair. The guard/execute nodes clear it on success.
-        sql = self.llm.generate_sql(
-            state["question"], state.get("schema_context", ""), state.get("error")
-        )
-        return {"sql": sql}
+        sql = self.llm.generate_sql(state["question"], self.schema_context, state.get("error"))
+        # retrieved_tables = the whole schema (we never drop a table); kept for eval scoring.
+        return {"sql": sql, "retrieved_tables": self.all_table_names}
 
     def guard(self, state: AgentState) -> AgentState:
-        """Static guardrail + EXPLAIN. Sets error (-> repair) or clears it (-> execute)."""
+        """Safety check: reject DDL/DML, verify identifiers exist, inject LIMIT, EXPLAIN.
+        Feeds errors to repair loop; clears error on success to allow execution."""
         result = sql_guard.review(
             state["sql"],
             self.layer.allowed_identifiers(),
             self.settings.sql_default_row_limit,
         )
         if result.verdict == sql_guard.Verdict.REJECT:
-            return {"error": "; ".join(result.reasons), "guard_reasons": result.reasons}
+            return {"error": "; ".join(result.reasons)}
 
         sql = result.repaired_sql or state["sql"]  # apply LIMIT injection if any
         try:
             self.client.explain(sql)
-        except psycopg.Error as e:
-            return {"sql": sql, "error": str(e).strip(), "guard_reasons": result.reasons}
-        return {"sql": sql, "error": None, "guard_reasons": result.reasons}
+        except Exception as e:  # noqa: BLE001 — any DB/EXPLAIN error feeds the repair loop
+            return {"sql": sql, "error": str(e).strip()}
+        return {"sql": sql, "error": None}
 
     def execute(self, state: AgentState) -> AgentState:
+        """Run SQL via read-only role (AGENT_RO). Catch execution errors for repair."""
         try:
             res = self.client.execute(state["sql"])
-        except psycopg.Error as e:
+        except Exception as e:  # noqa: BLE001 — any execution error feeds the repair loop
             return {"error": str(e).strip()}
         return {"result_columns": res.columns, "result_rows": res.rows, "error": None}
 
     def repair(self, state: AgentState) -> AgentState:
+        """Increment repair attempt counter. Routed back to generate if budget remains."""
         return {"repair_attempts": state.get("repair_attempts", 0) + 1}
 
     def summarize(self, state: AgentState) -> AgentState:
-        preview = _render_rows(state["result_columns"], state["result_rows"])
+        """Summarize result rows into an English answer. If the model refused (CANNOT_ANSWER
+        sentinel — the schema can't answer the question), surface the refusal instead of
+        narrating a meaningless row."""
+        cols = state.get("result_columns") or []
+        rows = state.get("result_rows") or []
+        refused = (
+            [c.lower() for c in cols] == ["status", "reason"]
+            and rows
+            and str(rows[0][0]).upper() == CANNOT_ANSWER
+        )
+        if refused:
+            msg = f"I can't answer that from this data: {rows[0][1]}."
+            return {"answer": msg, "failed": True}
+        preview = _render_rows(cols, rows)
         return {"answer": self.llm.summarize(state["question"], preview)}
 
     def give_up(self, state: AgentState) -> AgentState:
+        """Repair budget exhausted. Return failure with last error."""
         return {
             "answer": (
                 f"Could not produce a valid query after "

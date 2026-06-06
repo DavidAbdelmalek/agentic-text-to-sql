@@ -9,32 +9,22 @@ spinning forever. The routers are also unit-tested directly.
 from __future__ import annotations
 
 from agentic_text_to_sql.agent.graph import build_graph
-from agentic_text_to_sql.agent.nodes import AgentNodes
+from agentic_text_to_sql.agent.nodes import AgentNodes, render_schema
 from agentic_text_to_sql.config import Settings
 from agentic_text_to_sql.db.read_only_client import QueryResult
 from agentic_text_to_sql.semantic_layer.loader import SemanticLayer
-from agentic_text_to_sql.semantic_layer.retriever import Retrieved
 
 
 # --------------------------------------------------------------------------- fakes
-class FakeRetriever:
-    """Always returns the fct_sales table so generation has a fixed schema context."""
-
-    def retrieve(self, question: str, k: int = 3) -> list[Retrieved]:
-        return [Retrieved("fct_sales", 1.0)]
-
-
 class FakeLLM:
     """Records how many times generate_sql is called; returns a fixed SQL string."""
 
     def __init__(self, sql: str) -> None:
         self._sql = sql
         self.generate_calls = 0
-        self.classify_calls = 0
         self.summarize_calls = 0
 
     def classify(self, question: str) -> str:
-        self.classify_calls += 1
         return "aggregate"
 
     def generate_sql(self, question: str, schema_context: str, error: str | None) -> str:
@@ -66,12 +56,14 @@ class FakeClient:
 
 def _nodes(llm: FakeLLM, client: FakeClient, layer: SemanticLayer, retries: int = 2) -> AgentNodes:
     settings = Settings(sql_max_repair_retries=retries, sql_default_row_limit=1000)
+    all_tables = [t.name for t in layer.tables]
     return AgentNodes(
         settings=settings,
         llm=llm,
-        retriever=FakeRetriever(),
         client=client,
         layer=layer,
+        schema_context=render_schema(layer, all_tables),
+        all_table_names=all_tables,
     )
 
 

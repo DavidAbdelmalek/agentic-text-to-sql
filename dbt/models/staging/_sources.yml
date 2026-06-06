@@ -2,10 +2,10 @@ version: 2
 
 sources:
   - name: raw
-    schema: raw
+    schema: TTSQL_RAW
     description: >
       UCI "Online Retail II" (CC BY 4.0), extract-loaded by `make load` (ingest.py) from a
-      pinned Hugging Face revision. Real UK online-retail invoices, 2009-12 .. 2011-12.
+      pinned Hugging Face revision into Snowflake. Real UK online-retail invoices, 2009-12 .. 2011-12.
     tables:
       - name: online_retail
         description: "One row per invoice line, as-loaded: all TEXT, uncleaned, dirty."

@@ -44,7 +44,7 @@ class QResult:
 def _evaluate(gold: list[GoldQuestion], settings: Settings) -> list[QResult]:
     nodes = build_default_nodes(settings)
     app = build_graph(nodes)
-    client = ReadOnlyClient(settings.agent_database_url, settings.sql_statement_timeout_ms)
+    client = ReadOnlyClient(settings.sql_statement_timeout_ms)
 
     results: list[QResult] = []
     for q in gold:

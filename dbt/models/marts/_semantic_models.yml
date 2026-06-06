@@ -1,0 +1,79 @@
+version: 2
+
+# dbt Semantic Layer (MetricFlow) definition of the star. This is the native, standardized
+# home for the business semantics the agent needs: entities (join keys), measures (with their
+# aggregation = additivity), dimensions, and grain. scripts/generate_semantic_layer.py reads
+# these (plus the warehouse catalog for types) to build data/semantic/semantic_layer.yaml.
+
+semantic_models:
+  - name: sales
+    description: "Sales fact — one row per invoice line, measures in GBP."
+    model: ref('fct_sales')
+    entities:
+      - {name: invoice_line, type: primary, expr: sales_key}
+      - {name: customer, type: foreign, expr: customer_key}
+      - {name: product, type: foreign, expr: product_key}
+      - {name: country, type: foreign, expr: country_key}
+      - {name: date, type: foreign, expr: date_key}
+    dimensions:
+      - name: invoice_no
+        type: categorical
+        description: "Invoice number; degenerate dimension for counting distinct orders."
+    measures:
+      - {name: revenue_gbp, agg: sum, description: "Line revenue in GBP (additive headline measure)."}
+      - {name: quantity, agg: sum, description: "Units sold on the line (additive)."}
+      - {name: unit_price_gbp, agg: average, description: "Price per unit in GBP (non-additive; average, do not sum)."}
+
+  - name: customer
+    description: "Customer dimension — one row per customer; country is the modal country."
+    model: ref('dim_customer')
+    entities:
+      - {name: customer, type: primary, expr: customer_key}
+    dimensions:
+      - {name: customer_id, type: categorical, description: "Natural customer id from the source data."}
+      - {name: country, type: categorical, description: "Customer's modal country across their invoices."}
+
+  - name: product
+    description: "Product dimension — one row per stock code; product name is the modal description."
+    model: ref('dim_product')
+    entities:
+      - {name: product, type: primary, expr: product_key}
+    dimensions:
+      - {name: stock_code, type: categorical, description: "Natural stock code identifying the product."}
+      - {name: product_name, type: categorical, description: "Modal product description for the stock code."}
+
+  - name: country
+    description: "Country dimension with a DACH / Europe / Rest of World region rollup."
+    model: ref('dim_country')
+    entities:
+      - {name: country, type: primary, expr: country_key}
+    dimensions:
+      - {name: country, type: categorical, description: "Country name."}
+      - {name: region, type: categorical, description: "Region rollup: DACH, Europe, or Rest of World."}
+
+  - name: date
+    description: "Calendar date dimension, 2009-12-01 .. 2011-12-31."
+    model: ref('dim_date')
+    defaults:
+      agg_time_dimension: date
+    entities:
+      - {name: date, type: primary, expr: date_key}
+    dimensions:
+      - {name: date, type: time, type_params: {time_granularity: day}, description: "Calendar date."}
+      - {name: year, type: categorical, description: "Calendar year."}
+      - {name: quarter, type: categorical, description: "Calendar quarter (1-4)."}
+      - {name: month, type: categorical, description: "Month number (1-12)."}
+      - {name: month_name, type: categorical, description: "Month name (e.g. January)."}
+      - {name: day_of_month, type: categorical, description: "Day of the month (1-31)."}
+      - {name: day_of_week, type: categorical, description: "ISO day of week (1=Mon..7=Sun)."}
+      - {name: is_weekend, type: categorical, description: "True if Saturday or Sunday."}
+
+metrics:
+  - name: total_revenue
+    description: "Total revenue in GBP."
+    type: simple
+    type_params: {measure: revenue_gbp}
+  - name: total_quantity
+    description: "Total units sold."
+    type: simple
+    type_params: {measure: quantity}

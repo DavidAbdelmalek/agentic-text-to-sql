@@ -8,12 +8,8 @@ from typing import Any, TypedDict
 
 class AgentState(TypedDict, total=False):
     question: str
-    question_class: str  # e.g. aggregate | lookup | trend | ambiguous
-    retrieved_tables: list[str]
-    schema_context: str
+    retrieved_tables: list[str]  # full schema is always sent; kept for eval retrieval scoring
     sql: str
-    params: dict[str, Any]
-    guard_reasons: list[str]
     result_columns: list[str]
     result_rows: list[tuple[Any, ...]]
     error: str | None

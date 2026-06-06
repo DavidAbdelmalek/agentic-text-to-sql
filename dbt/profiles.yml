@@ -1,17 +1,16 @@
-# Committed on purpose: reads ONLY env vars, contains no secrets.
-# dbt builds as the SUPERUSER (it needs DDL). The agent NEVER uses these creds —
-# it connects with the read-only agent_ro role (AGENT_DATABASE_URL). This split is
-# the point: build-time write access is isolated from run-time query access.
+# Committed: reads ONLY env vars, no secrets. dbt builds as the developer role (key-pair auth)
+# into the TTSQL marts schema. The agent NEVER uses these creds — it connects with the
+# read-only AGENT_RO role.
 agentic_text_to_sql:
   target: dev
   outputs:
     dev:
-      type: postgres
-      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
-      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
-      user: "{{ env_var('POSTGRES_SUPERUSER', 'postgres') }}"
-      password: "{{ env_var('POSTGRES_SUPERUSER_PASSWORD', 'postgres') }}"
-      dbname: "{{ env_var('POSTGRES_DB', 'warehouse') }}"
-      schema: public
+      type: snowflake
+      account: "{{ env_var('GENAI_DBT_SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('GENAI_DBT_SNOWFLAKE_USER_DEVELOPER') }}"
+      private_key_path: "{{ env_var('GENAI_DBT_SNOWFLAKE_PRIVATE_KEY_PATH_DEVELOPER') }}"
+      role: "{{ env_var('GENAI_DBT_SNOWFLAKE_ROLE_DEVELOPER') }}"
+      warehouse: "{{ env_var('GENAI_DBT_SNOWFLAKE_WAREHOUSE_DEVELOPER') }}"
+      database: "{{ env_var('GENAI_DBT_SNOWFLAKE_DATABASE_DEVELOPER') }}"
+      schema: TTSQL # dbt marts land here; AGENT_RO is granted SELECT on this schema
       threads: 4
-      sslmode: prefer

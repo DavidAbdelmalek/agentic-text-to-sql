@@ -3,7 +3,7 @@
 with per_product as (
     select
         stock_code,
-        mode() within group (order by description) as product_name
+        mode(description) as product_name
     from {{ ref('stg_online_retail') }}
     where description is not null
     group by stock_code

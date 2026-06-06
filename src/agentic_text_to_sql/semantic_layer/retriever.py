@@ -1,14 +1,11 @@
-"""Schema retrieval: given a natural-language question, return the most relevant tables to
-put in front of the SQL generator. Two backends behind one interface:
+"""Schema retrieval: given a natural-language question, return the most relevant tables.
 
-- KeywordRetriever  — zero-dependency, deterministic token-overlap. Default for tests/CI and
-  the offline/mock path. For a handful of tables it is genuinely sufficient.
-- VectorRetriever   — pgvector cosine over fastembed embeddings (built by build.py). The
-  headline path; it's the pattern that scales to hundreds of tables.
-
-Why retrieval at all (interview): putting only the relevant tables/columns in the prompt
-keeps it small AND bounds what the model can reference, which—together with the guardrail's
-identifier check—is how we stop column hallucination.
+The agent itself no longer retrieves — for the fixed 5-table star it sends the full schema
+(retrieval can only drop a table the query needs; the guard, not retrieval, stops
+hallucination). This module stays behind the `Retriever` interface as (a) the eval's
+retrieval-correctness scoring target and (b) the documented swap-in for when the warehouse
+grows past the context budget — at which point a Cortex Search / vector backend implements the
+same `retrieve()` contract. KeywordRetriever is the zero-dependency, deterministic default.
 """
 
 from __future__ import annotations
@@ -95,46 +92,7 @@ class KeywordRetriever:
         return [r for r in scored if r.score > 0][:k]
 
 
-class VectorRetriever:
-    """pgvector cosine over fastembed embeddings built into the `semantic` schema."""
-
-    def __init__(self, settings: Settings, layer: SemanticLayer) -> None:
-        import psycopg
-
-        from agentic_text_to_sql.semantic_layer.embeddings import get_embedder
-
-        self._settings = settings
-        self._layer = layer
-        # Cheap reachability check FIRST, so we fall back to keyword without paying the
-        # model-download cost when the vector store hasn't been built yet.
-        with psycopg.connect(settings.agent_database_url) as conn:
-            exists = conn.execute("SELECT to_regclass('semantic.table_embeddings')").fetchone()
-        if not exists or exists[0] is None:
-            raise RuntimeError("semantic.table_embeddings not found; run `make semantic`")
-        self._embedder = get_embedder(settings)
-
-    def retrieve(self, question: str, k: int = 3) -> list[Retrieved]:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
-        vec = self._embedder.embed([question])[0]
-        with psycopg.connect(self._settings.agent_database_url) as conn:
-            register_vector(conn)
-            rows = conn.execute(
-                "SELECT table_name, 1 - (embedding <=> %s::vector) AS score "
-                "FROM semantic.table_embeddings ORDER BY embedding <=> %s::vector LIMIT %s",
-                (vec, vec, k),
-            ).fetchall()
-        return [Retrieved(table=str(name), score=float(score)) for name, score in rows]
-
-
 def get_retriever(settings: Settings, layer: SemanticLayer | None = None) -> Retriever:
-    """Pick a backend. Vector when embeddings are configured AND the store is reachable;
-    otherwise the deterministic keyword retriever."""
-    layer = layer or load_semantic_layer()
-    if settings.embed_provider == "local":
-        try:
-            return VectorRetriever(settings, layer)
-        except Exception:  # noqa: BLE001 — any failure (no model/store) -> safe fallback
-            return KeywordRetriever(layer)
-    return KeywordRetriever(layer)
+    """Return the retrieval backend. Keyword-only today; a vector/Cortex-Search backend would
+    slot in here behind the same `Retriever` interface at scale (see module docstring)."""
+    return KeywordRetriever(layer or load_semantic_layer())
