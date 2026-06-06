@@ -62,9 +62,7 @@ class ReadOnlyClient:
         # Connect with the READ-ONLY role on the marts schema. The role has only SELECT
         # (+ Cortex) — Snowflake rejects writes at the engine level.
         conn = sf.connect(role=sf.AGENT_ROLE, schema=sf.MARTS_SCHEMA)
-        conn.cursor().execute(
-            f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {self._timeout_s}"
-        )
+        conn.cursor().execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {self._timeout_s}")
         return conn
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> QueryResult:

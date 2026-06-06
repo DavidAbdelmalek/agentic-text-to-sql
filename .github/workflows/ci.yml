@@ -9,76 +9,27 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# CI is fully offline. The warehouse is Snowflake (cloud, credentialed), so it is NOT spun up
+# in CI — instead the agent runs in deterministic MOCK mode: the whole graph (generate, guard,
+# bounded repair, refusal) and the eval scoring are exercised against fakes, no DB and no LLM
+# key. dbt/Snowflake builds and execution-accuracy against the live warehouse are run locally.
 jobs:
-  # Fast path: no DB needed. Lint, type-check, unit tests.
-  static:
+  check:
     runs-on: ubuntu-latest
+    env:
+      LLM_PROVIDER: mock
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --all-extras --group dev
-      - name: ruff
+      - run: uv sync --group dev
+      - name: ruff (lint)
         run: uv run ruff check src tests
-      - name: ruff format check
+      - name: ruff (format check)
         run: uv run ruff format --check src tests
-      - name: mypy
+      - name: mypy (strict)
         run: uv run mypy
-      - name: pytest (unit, no DB)
+      - name: pytest (unit, mock, no warehouse)
         run: uv run pytest -m "not integration"
-
-  # DB path: Postgres+pgvector service, dbt build, integration tests, smoke eval.
-  # Smoke eval runs in MOCK mode (no LLM key in CI) — it validates the harness, not a model.
-  database:
-    runs-on: ubuntu-latest
-    services:
-      warehouse:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: warehouse
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      POSTGRES_DB: warehouse
-      POSTGRES_SUPERUSER: postgres
-      POSTGRES_SUPERUSER_PASSWORD: postgres
-      AGENT_DB_USER: agent_ro
-      AGENT_DB_PASSWORD: agent_ro_pw
-      AGENT_DATABASE_URL: postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse
-      # Deterministic offline path: mock LLM + keyword retriever (no model download, no API key).
-      LLM_PROVIDER: mock
-      EMBED_PROVIDER: keyword
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-      - run: uv sync --all-extras --group dev
-      - name: Create read-only role + extensions
-        # The init scripts are written for the in-container Unix socket; on the runner the
-        # Postgres service is TCP at localhost, so point psql there via PG* env vars (psql
-        # honors PGHOST/PGPORT/PGUSER/PGPASSWORD when -h is absent).
-        run: |
-          psql -f docker/initdb/01-extensions.sql
-          bash docker/initdb/02-create-readonly-role.sh
-        env:
-          POSTGRES_USER: postgres
-          PGHOST: localhost
-          PGPORT: "5432"
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGDATABASE: warehouse
-      # Load downloads a pinned UCI Online Retail II revision from Hugging Face (needs network).
-      - name: Load real data (raw schema)
-        run: uv run python -m agentic_text_to_sql.ingest
-      - name: dbt build (raw -> star + tests)
-        run: cd dbt && uv run dbt deps && uv run dbt build
-      # Smoke eval: mock LLM + keyword retriever -> deterministic. Gates on exec accuracy == 1.0.
-      - name: Smoke eval
-        run: uv run python -m agentic_text_to_sql.eval --smoke
