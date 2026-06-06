@@ -134,9 +134,9 @@ so the same graph can A/B different model backends on the same eval.
 
 Primary metric: **execution accuracy** (does the agent's result set match the reference?), plus
 SQL structural similarity (diagnostic only) and retrieval correctness. Methodology + failure
-modes: [`eval-methodology` skill](.claude/skills/eval-methodology/SKILL.md). The numbers below
-are the deterministic **mock baseline** (no LLM) — they validate the harness, not a model; run
-with `LLM_PROVIDER=cortex` for live accuracy.
+modes: [`docs/DECISIONS.md`](docs/DECISIONS.md) (D6, D15). The numbers below are the deterministic
+**mock baseline** (no LLM); they validate the harness, not a model. Run with `LLM_PROVIDER=cortex`
+for live accuracy.
 
 | Run | Execution accuracy | Retrieval ok-rate | Mean struct. sim |
 |---|---|---|---|
@@ -168,15 +168,8 @@ data/       generated semantic_layer.yaml · eval gold set
 scripts/    snowflake provisioning/verify · generate_semantic_layer.py · node-by-node debug harness
 terraform/  Snowflake read-only role as IaC
 docs/       ARCHITECTURE.md · DECISIONS.md
-.claude/    custom subagents (schema-explorer, sql-guardian, eval-runner, test-author) · skills
 tests/      pytest unit + integration
 ```
-
-## How it's built
-
-Claude Code drives this repo as a structured multi-agent workflow: four single-responsibility
-**subagents** (schema-explorer, sql-guardian, eval-runner, test-author) and **skills** encoding
-the SQL contract + eval method. See [`CLAUDE.md`](CLAUDE.md).
 
 _Data: UCI **Online Retail II**, UCI Machine Learning Repository, **CC BY 4.0**. Loaded from a
 pinned Hugging Face revision; not redistributed in this repo._

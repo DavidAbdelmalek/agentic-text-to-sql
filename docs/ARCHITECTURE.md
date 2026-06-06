@@ -85,6 +85,5 @@ data/semantic|eval/        generated semantic layer, gold set
 scripts/                   snowflake provision/verify · generate_semantic_layer.py · node-by-node debug harness
 terraform/snowflake/       read-only AGENT_RO role as IaC
 tests/                     pytest unit + integration
-.claude/                   settings (permissions), subagents, skills
 docs/                      this file + DECISIONS.md
 ```

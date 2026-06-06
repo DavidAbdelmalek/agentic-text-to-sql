@@ -42,8 +42,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Claude Code local (machine-specific) settings — project settings.json IS committed
-.claude/settings.local.json
+# Claude Code dev config (subagents, permissions, project memory): kept local, not in the product repo
+.claude/
+CLAUDE.md
 
 # dbt Fusion run logs
 logs/
