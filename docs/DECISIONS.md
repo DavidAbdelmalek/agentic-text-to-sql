@@ -3,6 +3,56 @@
 Every non-obvious choice, with the trade-off. This is the interview cheat-sheet — each
 entry is something you should be able to defend out loud.
 
+> **The project was built on Postgres (D1–D16), then pivoted to Snowflake + Cortex (D17–D20).**
+> The Postgres-era decisions are kept for the evolution story; where the pivot changed them, the
+> entry carries a `→ superseded` note. The *principles* (read-only role, EXPLAIN, bounded repair,
+> execution-accuracy eval, generated grounding) all survived the pivot unchanged.
+
+## D17 — Pivot to Snowflake + in-warehouse Cortex LLMs
+**Why:** the user has a Snowflake account, so the warehouse moved off local Postgres onto
+Snowflake, and the LLM moved *into* the warehouse via **Snowflake Cortex** (`COMPLETE`). The
+agent connects only as the read-only `AGENT_RO` role (`SELECT` + `CORTEX_USER`), which both runs
+the model and reads the data — so **no rows leave Snowflake** and there is no external API key.
+Default model `mistral-large2` (in-region EU); Claude reachable via cross-region inference
+(`claude-4-sonnet`). The provider stays pluggable (OpenAI/Anthropic/mock) behind the same `LLM`
+interface, so the same graph can A/B model backends. **Trade-off:** Cortex's model menu is
+region-limited (no local Claude in eu-central without cross-region) and CI can no longer use a
+free containerised DB — CI is now offline mock-only (D19). The read-only boundary (D2) ports
+exactly: a Snowflake role with no write/DDL grants. → supersedes the Postgres specifics of D2,
+D7, D10, D13.
+
+## D18 — Lean graph: drop classify + retrieve, send the full schema
+**Why:** for a fixed 5-table star, dynamic retrieval is net-negative — with k≈tables it returns
+nearly the whole schema anyway, and when it drops a table (the fact table scores low on
+dimension-phrased questions) it *causes* a repair cycle. `classify` was dead (nothing read
+`question_class`). So both nodes were removed; the full schema is rendered once and sent every
+generation. Anti-hallucination still comes from the guard's identifier check, not retrieval.
+**Trade-off:** loses a "retrieval stage" talking point, replaced by the stronger, honest one —
+*retrieval is a scale tool; at 5 tables it only hurts*. The keyword retriever stays behind the
+`Retriever` interface as the eval's retrieval-scoring target and the documented swap-in for
+scale. → supersedes D12 (pgvector retriever) as the runtime path.
+
+## D19 — Semantic layer generated from the dbt Semantic Layer + warehouse catalog
+**Why:** the agent's `semantic_layer.yaml` was hand-maintained (drifts from the models). It is
+now a **generated artifact**: `scripts/generate_semantic_layer.py` merges the **dbt Semantic
+Layer** (`_semantic_models.yml` — entities→keys/joins, measures→additivity, dimensions, grain)
+with the **warehouse catalog** (`catalog.json`, full columns + types). The dbt Semantic Layer is
+the industry-standard home for these semantics (the same definitions BI tools/MetricFlow use), so
+nothing agent-specific is hand-authored. `--check` is a CI drift gate (treat the YAML like a
+lockfile). **Trade-off:** depends on a dbt catalog (a warehouse round-trip) and the legacy
+MetricFlow YAML (Fusion warns it's deprecated but still parses). → supersedes D5's "kept in sync
+via schema-explorer + make semantic" mechanism.
+
+## D20 — Refuse instead of inventing a proxy
+**Why:** LLMs hallucinate *semantics*, not just columns — asked for "profit margin per sales rep"
+(no such data), the model will force the question onto real columns (`revenue - unit_price` as a
+fake "margin") and return a confident wrong number that the guard *cannot* catch (every column is
+real). So the prompt + a few-shot example instruct the model to emit a `CANNOT_ANSWER` sentinel
+when the schema lacks the needed concept; the `summarize` node detects it and reports a refusal
+(`failed=True`). **Trade-off:** instruction + few-shot is ~80% reliable, not bulletproof — the
+robust fix is a separate answerability gate before generate; this is the cheap, high-value layer.
+This is the honest answer to "the guard checks safety, not correctness."
+
 ## D1 — LangGraph over a single-prompt chain
 **Why:** the task is inherently multi-step with cycles (generate → validate → execute →
 *loop back on error*). A single prompt can't enforce a guardrail between generation and

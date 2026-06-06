@@ -1,29 +1,28 @@
 # Windows mirror of the Makefile (no `make` on stock Windows). Usage:
-#   ./tasks.ps1 up | install | lint | type | test-fast | eval-smoke | ...
-param([Parameter(Position = 0)][string]$Target = "help")
+#   ./tasks.ps1 install | provision | load | dbt-build | semantic | run-cli | eval | ci | ...
+# The warehouse is Snowflake; credentials come from GENAI_DBT_SNOWFLAKE_* env vars.
+param([Parameter(Position = 0)][string]$Target = "help", [Parameter(Position = 1)][string]$Q = "")
 
 $ErrorActionPreference = "Stop"
 
 switch ($Target) {
     "help"       { Get-Content Makefile | Select-String '## ' | ForEach-Object { $_.Line } }
-    "install"    { uv sync --all-extras --group dev }
-    "up"         { docker compose up -d }
-    "obs-up"     { docker compose --profile observability up -d }
-    "down"       { docker compose --profile observability down }
-    "logs"       { docker compose logs -f warehouse }
-    "psql"       { $dsn = if ($env:AGENT_DATABASE_URL) { $env:AGENT_DATABASE_URL } else { "postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse" }; psql $dsn }
+    "install"    { uv sync --group dev }
+    "provision"  { uv run python scripts/snowflake_provision.py }
+    "verify-ro"  { uv run python scripts/snowflake_verify_readonly.py }
     "load"       { uv run python -m agentic_text_to_sql.ingest }
     "dbt-build"  { Push-Location dbt; uv run dbt deps; uv run dbt build; Pop-Location }
-    "introspect" { uv run python scripts/introspect_schema.py }
-    "semantic"   { uv run python -m agentic_text_to_sql.semantic_layer.build }
+    "semantic"   { Push-Location dbt; uv run dbt docs generate; Pop-Location; uv run python scripts/generate_semantic_layer.py }
     "lint"       { uv run ruff check src tests }
     "fmt"        { uv run ruff format src tests }
+    "fmt-check"  { uv run ruff format --check src tests }
     "type"       { uv run mypy }
     "test-fast"  { uv run pytest -m "not integration" }
     "test"       { uv run pytest }
     "eval"       { uv run python -m agentic_text_to_sql.eval }
     "eval-smoke" { uv run python -m agentic_text_to_sql.eval --smoke }
     "run-api"    { uv run uvicorn agentic_text_to_sql.api:app --reload }
-    "ci"         { uv run ruff check src tests; uv run mypy; uv run pytest -m "not integration" }
+    "run-cli"    { uv run ttsql ask "$Q" }
+    "ci"         { uv run ruff check src tests; uv run ruff format --check src tests; uv run mypy; uv run pytest -m "not integration" }
     default      { Write-Output "unknown target '$Target'. Run ./tasks.ps1 help" }
 }

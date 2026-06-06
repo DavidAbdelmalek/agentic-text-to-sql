@@ -1,47 +1,34 @@
 # Canonical task runner (Linux/macOS/CI). Windows users: use ./tasks.ps1 <target>,
 # which mirrors these targets. Every target is idempotent and re-runnable.
+# The warehouse is Snowflake (cloud); credentials come from GENAI_DBT_SNOWFLAKE_* env vars.
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help install up down logs psql load dbt-build introspect semantic \
+.PHONY: help install provision verify-ro load dbt-build semantic \
         lint type test test-fast fmt eval eval-smoke run-api run-cli ci clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-install: ## Sync pinned deps + dev/local-llm extras (uv)
-	uv sync --all-extras --group dev
+install: ## Sync pinned deps (uv)
+	uv sync --group dev
 
-up: ## Start Postgres + pgvector (one command)
-	docker compose up -d
-	@echo "waiting for warehouse healthy..." && \
-	  until docker compose exec -T warehouse pg_isready -U $${POSTGRES_SUPERUSER:-postgres} >/dev/null 2>&1; do sleep 1; done
-	@echo "warehouse ready."
+provision: ## Create Snowflake schemas + the read-only AGENT_RO role + grants
+	uv run python scripts/snowflake_provision.py
 
-obs-up: ## Start self-hosted Langfuse (tracing UI at http://localhost:3000)
-	docker compose --profile observability up -d
+verify-ro: ## Prove AGENT_RO can read + use Cortex but cannot write
+	uv run python scripts/snowflake_verify_readonly.py
 
-down: ## Stop containers (keeps volume)
-	docker compose --profile observability down
-
-logs: ## Tail warehouse logs
-	docker compose logs -f warehouse
-
-psql: ## Open a read-only psql shell as the agent role
-	psql "$${AGENT_DATABASE_URL:-postgresql://agent_ro:agent_ro_pw@localhost:5432/warehouse}"
-
-load: ## (Phase 2) Download pinned UCI Online Retail II (HF) -> raw schema
+load: ## Download pinned UCI Online Retail II (HF) -> TTSQL_RAW
 	uv run python -m agentic_text_to_sql.ingest
 
-dbt-build: ## (Phase 2) deps + build + test dbt models (raw -> star) against Postgres
+dbt-build: ## Build + test dbt models (raw -> star) on Snowflake
 	cd dbt && uv run dbt deps && uv run dbt build
 
-introspect: ## (Phase 3 fallback) Dump raw schema to data/semantic/raw_schema.json
-	uv run python scripts/introspect_schema.py
-
-semantic: ## (Phase 3) Refresh the semantic layer (delegated to schema-explorer)
-	uv run python -m agentic_text_to_sql.semantic_layer.build
+semantic: ## Regenerate semantic_layer.yaml from the dbt Semantic Layer + warehouse catalog
+	cd dbt && uv run dbt docs generate
+	uv run python scripts/generate_semantic_layer.py
 
 lint: ## ruff lint
 	uv run ruff check src tests
@@ -52,26 +39,28 @@ fmt: ## ruff format
 type: ## mypy strict
 	uv run mypy
 
-test-fast: ## Unit tests only (no DB)
+test-fast: ## Unit tests only (mock mode, no warehouse)
 	uv run pytest -m "not integration"
 
-test: ## All tests (needs DB up)
+test: ## All tests (needs Snowflake creds for integration tests)
 	uv run pytest
 
-eval: ## (Phase 6) Full gold-set eval, logged to Langfuse if configured
+eval: ## Full gold-set eval, logged to Langfuse if configured (needs Snowflake)
 	uv run python -m agentic_text_to_sql.eval
 
-eval-smoke: ## (Phase 6) CI smoke subset (mock mode if no LLM key)
+eval-smoke: ## CI smoke subset (mock mode if no warehouse)
 	uv run python -m agentic_text_to_sql.eval --smoke
 
-run-api: ## (Phase 5) FastAPI server
+run-api: ## FastAPI server
 	uv run uvicorn agentic_text_to_sql.api:app --reload
 
-run-cli: ## (Phase 5) Ask a question from the CLI: make run-cli Q="..."
+run-cli: ## Ask a question from the CLI: make run-cli Q="..."
 	uv run ttsql ask "$(Q)"
 
-ci: lint type test-fast ## What CI runs on the fast path
+ci: lint fmt-check type test-fast ## What CI runs (offline)
 
-clean: ## Remove caches + generated artifacts (NOT the DB volume)
-	rm -rf .ruff_cache .mypy_cache .pytest_cache dbt/target dbt/logs \
-	  data/semantic/raw_schema.json data/eval/results
+fmt-check: ## ruff format check (CI)
+	uv run ruff format --check src tests
+
+clean: ## Remove caches + generated dbt artifacts
+	rm -rf .ruff_cache .mypy_cache .pytest_cache dbt/target dbt/logs logs data/eval/results
