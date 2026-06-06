@@ -1,6 +1,0 @@
-# Copy to terraform.tfvars (gitignored) and fill in. Matches the docker-compose defaults.
-superuser_password = "postgres"
-agent_password     = "agent_ro_pw"
-# host             = "localhost"
-# port             = 5432
-# database         = "warehouse"

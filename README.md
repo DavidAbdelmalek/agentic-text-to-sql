@@ -1,98 +1,182 @@
-# Agentic Text-to-SQL
+# Agentic Text-to-SQL (Snowflake + Cortex)
 
-> A **safe, observable, evaluated** SQL agent: ask a business question in plain English,
-> get an answer backed by **read-only** SQL it generated, validated, and ran — with full
-> tracing and an automated accuracy eval. Built with production data-engineering discipline.
+> Ask a business question in plain English; get an answer backed by **read-only** SQL the
+> agent generated, safety-checked, and ran against a **Snowflake** warehouse — with the LLM
+> running **inside** Snowflake (Cortex), full tracing, and an automated accuracy eval.
 
 **What this proves in 60 seconds**
-- **Agentic GenAI** — a multi-step **LangGraph** agent (classify → retrieve schema →
-  generate SQL → validate → execute → bounded repair → summarize), not a single prompt.
+- **Agentic GenAI** — a multi-step **LangGraph** agent (generate → guard → execute → bounded
+  repair → summarize), not a single prompt.
 - **Safety by construction** — the agent can only ever *read*: a dedicated **read-only
-  Postgres role** is the hard boundary, with a sqlglot + `EXPLAIN` guardrail in front.
-- **It's measured, not a demo** — an **execution-accuracy** eval over a curated gold set,
-  logged to **Langfuse** and run as a CI smoke gate.
-- **Real data engineering underneath** — real **UCI Online Retail II** data, cleaned and
-  modeled into a **star schema** with **dbt** (Kimball), provisioned with **Terraform**,
-  one-command Dockerized, **free**.
+  Snowflake role** (`AGENT_RO`) is the hard boundary, with a `sqlglot` + `EXPLAIN` guardrail
+  in front of it.
+- **No data leaves the warehouse** — the LLM is **Snowflake Cortex** (`COMPLETE`), called over
+  the same read-only connection. No external API key, no rows shipped to a third party.
+- **It refuses instead of guessing** — asked for data that doesn't exist (profit, margin, sales
+  rep), it declines rather than inventing a plausible-but-wrong query.
+- **It's measured, not a demo** — an **execution-accuracy** eval over a curated gold set, logged
+  to **Langfuse**.
+- **Real data engineering underneath** — real **UCI Online Retail II** data, modeled into a
+  Kimball **star schema** with **dbt**, with the agent's semantic layer *generated* from the
+  **dbt Semantic Layer** + the warehouse catalog.
 
+## The agent workflow
+
+```mermaid
+flowchart TD
+    Q([Question in English]) --> G[generate<br/><i>Cortex LLM · full schema · few-shot</i>]
+    G --> GD{guard<br/><i>sqlglot: single read-only SELECT?<br/>identifiers real? LIMIT? EXPLAIN</i>}
+    GD -->|reject| R[repair<br/><i>feed error back · bounded, max 2</i>]
+    GD -->|ok| EX{execute<br/><i>read-only AGENT_RO role</i>}
+    EX -->|db error| R
+    EX -->|ok| S[summarize<br/><i>rows → English answer</i>]
+    R -->|retries left| G
+    R -->|budget spent| GU[give_up]
+    S --> A([Answer])
+    GU --> A
+
+    classDef safe fill:#e7f5e7,stroke:#2e7d32;
+    classDef stop fill:#fde8e8,stroke:#c62828;
+    class GD,EX safe;
+    class GU stop;
 ```
-question ─▶ classify ─▶ retrieve schema ─▶ generate SQL ─▶ guardian (sqlglot + EXPLAIN)
-                                                              │ approve
-                                                              ▼
-        summarize ◀─ execute (READ-ONLY role) ◀──────────────┘
-              ▲              │ error
-              └── reflect & repair (max N, bounded) ──┘
-```
-Full diagram: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Every design trade-off:
-[`docs/DECISIONS.md`](docs/DECISIONS.md).
+
+The **guard sits between generation and execution** as its own node, and the **repair loop is
+an explicit, bounded cycle** in the graph edges — neither is expressible inside a single LLM
+call. Every node is traced to Langfuse. Full diagram: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md);
+every trade-off: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## The safety model (the headline)
+
 | Layer | Mechanism | Can it fail open? |
 |---|---|---|
-| 1. Contract | prompt + `sql-generation-contract` skill: one read-only SELECT | yes (prompts can be bypassed) |
-| 2. Guardrail | `sql_guard`: single-statement, no DDL/DML, identifiers resolve, LIMIT, `EXPLAIN` | yes (parser gaps) |
-| 3. **DB role** | agent connects as `agent_ro` — `SELECT`/`EXPLAIN`, **no** write grants | **no — engine rejects writes** |
+| 1. Contract | prompt + few-shot: one read-only SELECT, refuse if unanswerable | yes (prompts can be bypassed) |
+| 2. Guardrail | `sql_guard`: single statement, no DDL/DML, identifiers resolve to the semantic layer, LIMIT, `EXPLAIN` | yes (parser gaps) |
+| 3. **DB role** | agent connects as **`AGENT_RO`** — `SELECT` + `CORTEX_USER` only, **no** write/DDL grants | **no — Snowflake rejects writes** |
 
-An LLM emits arbitrary text, so the only trustworthy control is a **revoked privilege**.
-Layers 1–2 are fast, explainable filters; layer 3 is the wall.
+An LLM emits arbitrary text, so the only trustworthy control is a **revoked privilege**. Layers
+1–2 are fast, explainable filters; layer 3 is the wall. The same read-only role is what runs the
+Cortex LLM — it can read and *think*, never write.
 
-## Quickstart (local, free, one command-ish)
-```bash
-cp .env.example .env     # defaults: local Ollama LLM + local embeddings, no API keys
-make install             # uv sync, pinned deps (Python 3.11+)
-make up                  # Postgres 16 + pgvector + read-only role (docker compose)
-make load && make dbt-build   # load real UCI data -> dbt star schema (~805k fact rows), tested
-make semantic            # build the semantic layer (anti-hallucination ground truth)
-make run-cli Q="Top 5 countries by revenue in 2011"
-make run-api             # FastAPI: POST /ask {"question": "..."}  (http://localhost:8000)
-make eval                # execution-accuracy eval over the gold set
+## The data
 
-make obs-up              # optional: self-hosted Langfuse tracing UI (http://localhost:3000)
+**[UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii)** — real
+transactions from a UK-based online gift-ware retailer, **2009-12-01 → 2011-12-09**, licensed
+**CC BY 4.0**. Loaded from a *pinned* Hugging Face revision (reproducible), so results don't
+drift.
+
+- **~1,067,371 raw invoice lines** → cleaned (drop cancellations, returns, non-positive
+  quantity/price, blank customers) → a star schema.
+- Source columns: `Invoice, StockCode, Description, Quantity, InvoiceDate, Price, Customer ID,
+  Country`.
+- Modeled with dbt into **`fct_sales`** (one row per invoice line; measures in **GBP**) +
+  **`dim_customer`**, **`dim_product`**, **`dim_country`** (with a DACH / Europe / Rest-of-World
+  region rollup), **`dim_date`**.
+- All money is **GBP**. There is **no** cost, margin, or sales-rep data — which is exactly why
+  the agent must *refuse* questions about them instead of fabricating an answer.
+
+```mermaid
+flowchart LR
+    HF[Hugging Face<br/>pinned UCI revision] -->|ingest.py · write_pandas| RAW[(TTSQL_RAW<br/>~1.07M raw rows)]
+    RAW -->|dbt build| STAR[(TTSQL<br/>fct_sales + 4 dims)]
+    STAR -->|dbt compile --write-catalog| CAT[catalog.json<br/>columns + types]
+    SM[dbt Semantic Layer<br/>_semantic_models.yml] --> GEN
+    CAT --> GEN[generate_semantic_layer.py]
+    GEN --> SL[semantic_layer.yaml<br/>grounds + guards the agent]
 ```
-Every agent run traces each node (classify → retrieve → generate → guard → execute → repair →
-summarize) to Langfuse when keys are set — see exactly what SQL was generated and how many
-repair loops ran, per question.
-On Windows without `make`: use `./tasks.ps1 <target>`. Cloud LLM? Set `LLM_PROVIDER` +
-keys in `.env` (OpenAI/Azure). No key at all? Eval still runs in deterministic **mock mode**.
+
+## The semantic layer is generated, not hand-maintained
+
+The agent grounds on `data/semantic/semantic_layer.yaml` — but that file is a **generated
+artifact**. `scripts/generate_semantic_layer.py` merges:
+- the **dbt Semantic Layer** (`dbt/models/marts/_semantic_models.yml` — entities → keys/joins,
+  measures → additivity, dimensions, grain), and
+- the **warehouse catalog** (`catalog.json` — authoritative column list + types),
+
+into the YAML the LLM reads and the guard validates against. Run `--check` as a CI gate so the
+agent's grounding can never silently drift from the dbt models.
+
+## Quickstart
+
+Requires a Snowflake account. Credentials are read from `GENAI_DBT_SNOWFLAKE_*` env vars
+(key-pair auth) — see `.env.example`.
+
+```bash
+uv sync                                              # pinned deps (Python 3.11+)
+
+uv run python scripts/snowflake_provision.py         # create schemas + read-only AGENT_RO role
+uv run python -m agentic_text_to_sql.ingest          # load pinned UCI data -> TTSQL_RAW
+uv run dbt build --project-dir dbt --profiles-dir dbt # clean + model the star (+ 42 tests)
+
+# regenerate the semantic layer from dbt + the warehouse catalog
+uv run dbt compile --write-catalog --project-dir dbt --profiles-dir dbt
+uv run python scripts/generate_semantic_layer.py
+
+uv run ttsql ask "Top 5 countries by revenue in 2011"   # ask a question (Cortex)
+uv run python -m agentic_text_to_sql.eval               # execution-accuracy eval
+uv run uvicorn agentic_text_to_sql.api:app              # FastAPI: POST /ask {"question": "..."}
+```
+
+No Snowflake handy? The whole graph and the eval run in deterministic **mock mode**
+(`LLM_PROVIDER=mock`) with no warehouse and no key — that's the CI path.
+
+> **Inspect the agent node-by-node:** `uv run python scripts/test_nodes_step_by_step.py "Top 5
+> products by revenue"` prints every node's input → output and the routing decisions.
+
+## Models
+
+The LLM is **Snowflake Cortex** (`SNOWFLAKE.CORTEX.COMPLETE`), default **`mistral-large2`**
+(in-region, EU). Claude is reachable in Cortex via cross-region inference (`claude-4-sonnet`).
+The provider is pluggable — `OpenAI`, `Anthropic`, and a deterministic `MockLLM` are also wired,
+so the same graph can A/B different model backends on the same eval.
 
 ## Evaluation
-Primary metric: **execution accuracy** (does the agent's result set match the reference?),
-plus SQL structural similarity (diagnostic) and retrieval correctness (right tables?).
-Methodology + failure modes: [`eval-methodology` skill](.claude/skills/eval-methodology/SKILL.md).
 
-18-question gold set; `make eval` (or `make eval-smoke` for the CI subset). Numbers below are
-the **deterministic mock baseline** (no LLM key) — they validate the harness + scoring, not a
-model. Set `LLM_PROVIDER=ollama|openai|azure` for real model accuracy across the full set.
+Primary metric: **execution accuracy** (does the agent's result set match the reference?), plus
+SQL structural similarity (diagnostic only) and retrieval correctness. Methodology + failure
+modes: [`eval-methodology` skill](.claude/skills/eval-methodology/SKILL.md). The numbers below
+are the deterministic **mock baseline** (no LLM) — they validate the harness, not a model; run
+with `LLM_PROVIDER=cortex` for live accuracy.
 
 | Run | Execution accuracy | Retrieval ok-rate | Mean struct. sim |
 |---|---|---|---|
 | Smoke subset (mock, CI gate) | **1.00** (6/6) | 1.00 | 0.997 |
 | Full set (mock baseline) | 0.33 (6/18) | 0.89 | 0.75 |
 
-The mock only knows ~6 query patterns, so the full-set mock score is expected to be low — that
-gap is what a real model closes. Note q14 scored 0.91 structural similarity yet **failed**
-execution accuracy — exactly why structural similarity is a secondary diagnostic, never a gate.
-Every run logs `execution_accuracy`, `retrieval_recall`, and `structural_similarity` to Langfuse.
+A telling case: one question scored 0.91 *structural* similarity yet **failed** execution
+accuracy — exactly why structural similarity is a secondary diagnostic, never a gate.
 
 ## Tech stack
-Python · LangGraph · LangChain · Langfuse · Postgres + pgvector · dbt (dbt-postgres;
-dbt-snowflake variant) · Terraform · FastAPI + Typer CLI · GitHub Actions (ruff, mypy,
-pytest, dbt build, smoke eval) · uv.
+
+| Area | Tools |
+|---|---|
+| Agent | **LangGraph**, LangChain, `sqlglot` (SQL parse/guard) |
+| LLM | **Snowflake Cortex** (`COMPLETE`) · pluggable: OpenAI / Anthropic / mock |
+| Warehouse | **Snowflake** (read-only `AGENT_RO` role; key-pair auth) |
+| Modeling | **dbt** (dbt-snowflake) + **dbt Fusion** (Rust engine) · **dbt Semantic Layer** |
+| Observability | **Langfuse** (per-node traces + eval scores) |
+| Interfaces | **FastAPI** (`POST /ask`) · **Typer** CLI (`ttsql ask`) |
+| IaC | **Terraform** (Snowflake read-only role) |
+| Tooling | **uv**, ruff, mypy --strict, pytest, GitHub Actions |
 
 ## Repo layout
+
 ```
-src/    agent graph + nodes, semantic_layer, sql_guard, read-only db client, eval, api, cli
-dbt/    Kimball star schema + tests        terraform/  local + Snowflake read-only variant
-docker/ Postgres init: extensions + read-only role     data/  semantic layer · eval gold set
-.claude/ permissions · subagents · skills  .mcp.json  read-only Postgres MCP for introspection
-docs/   ARCHITECTURE.md · DECISIONS.md      tests/  pytest unit + integration
+src/        agent graph + nodes · semantic_layer · sql_guard · read-only Snowflake client · eval · api · cli
+dbt/        Kimball star + tests · _semantic_models.yml (dbt Semantic Layer)
+data/       generated semantic_layer.yaml · eval gold set
+scripts/    snowflake provisioning/verify · generate_semantic_layer.py · node-by-node debug harness
+terraform/  Snowflake read-only role as IaC
+docs/       ARCHITECTURE.md · DECISIONS.md
+.claude/    custom subagents (schema-explorer, sql-guardian, eval-runner, test-author) · skills
+tests/      pytest unit + integration
 ```
 
 ## How it's built
-Claude Code drives this repo as a structured multi-agent workflow with **scoped**
-permissions (no blanket allow), four single-responsibility **subagents** (schema-explorer,
-sql-guardian, eval-runner, test-author), and two **skills** encoding the SQL contract + eval
-method. See [`CLAUDE.md`](CLAUDE.md). Built in reviewed phases; current status there.
 
-_Data: UCI **Online Retail II**, UCI Machine Learning Repository, licensed **CC BY 4.0**.
-Loaded from a pinned Hugging Face revision; not redistributed in this repo._
+Claude Code drives this repo as a structured multi-agent workflow: four single-responsibility
+**subagents** (schema-explorer, sql-guardian, eval-runner, test-author) and **skills** encoding
+the SQL contract + eval method. See [`CLAUDE.md`](CLAUDE.md).
+
+_Data: UCI **Online Retail II**, UCI Machine Learning Repository, **CC BY 4.0**. Loaded from a
+pinned Hugging Face revision; not redistributed in this repo._
