@@ -4,6 +4,11 @@
 > agent generated, safety-checked, and ran against a **Snowflake** warehouse — with the LLM
 > running **inside** Snowflake (Cortex), full tracing, and an automated accuracy eval.
 
+**▶ Live demo:** [agentic-text-to-sql.onrender.com](https://agentic-text-to-sql.onrender.com) —
+an interactive **Swagger UI** (FastAPI auto-generated). Open it, expand `POST /ask`, hit
+**Try it out**, and ask a question. On Render's free tier the first request after idle takes
+~30–60s to wake.
+
 **What this proves in 60 seconds**
 - **Agentic GenAI** — a multi-step **LangGraph** agent (generate → guard → execute → bounded
   repair → summarize), not a single prompt.
@@ -206,7 +211,7 @@ accuracy — exactly why structural similarity is a secondary diagnostic, never 
 | Warehouse | **Snowflake** (read-only `AGENT_RO` role; key-pair auth) |
 | Modeling | **dbt** (dbt-snowflake) + **dbt Fusion** (Rust engine) · **dbt Semantic Layer** |
 | Observability | **Langfuse** (per-node traces + eval scores) |
-| Interfaces | **FastAPI** (`POST /ask`) · **Typer** CLI (`ttsql ask`) |
+| Interfaces | **FastAPI** (`POST /ask`, Swagger UI at `/docs`) · **Typer** CLI (`ttsql ask`) |
 | Packaging | **Docker** (multi-stage, gunicorn) |
 | Tooling | **uv**, ruff, mypy --strict, pytest, GitHub Actions |
 
