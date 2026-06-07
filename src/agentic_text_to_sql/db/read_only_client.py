@@ -4,15 +4,27 @@ isn't a single SELECT/EXPLAIN, even though the role would reject writes anyway."
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import sqlglot
 from sqlglot import exp
+from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from agentic_text_to_sql.db import snowflake as sf
 
 _DIALECT = "snowflake"
+_T = TypeVar("_T")
+
+
+def _transient_exc_types() -> tuple[type[BaseException], ...]:
+    """Snowflake errors worth retrying: transient network/connection faults, not bad SQL
+    (ProgrammingError is deterministic — retrying it just wastes the budget)."""
+    from snowflake.connector.errors import InterfaceError, OperationalError
+
+    return (OperationalError, InterfaceError)
+
 
 # Expression types that must never appear anywhere in a query the agent runs.
 _FORBIDDEN = (
@@ -55,8 +67,9 @@ def assert_read_only(sql: str) -> exp.Expression:
 
 
 class ReadOnlyClient:
-    def __init__(self, statement_timeout_ms: int = 5000) -> None:
+    def __init__(self, statement_timeout_ms: int = 5000, max_attempts: int = 3) -> None:
         self._timeout_s = max(1, int(statement_timeout_ms) // 1000)
+        self._max_attempts = max(1, max_attempts)
 
     def _connect(self) -> Any:
         # Connect with the READ-ONLY role on the marts schema. The role has only SELECT
@@ -65,26 +78,47 @@ class ReadOnlyClient:
         conn.cursor().execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {self._timeout_s}")
         return conn
 
+    def _with_retry(self, fn: Callable[[], _T]) -> _T:
+        """Retry a connect+query operation on transient Snowflake faults with bounded backoff.
+        Safe because every operation here is a read (SELECT/EXPLAIN) and therefore idempotent."""
+        for attempt in Retrying(
+            retry=retry_if_exception_type(_transient_exc_types()),
+            stop=stop_after_attempt(self._max_attempts),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=4.0),
+            reraise=True,
+        ):
+            with attempt:
+                return fn()
+        raise RuntimeError("unreachable")  # pragma: no cover — Retrying always returns or raises
+
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> QueryResult:
         assert_read_only(sql)
-        conn = self._connect()
-        try:
-            cur = conn.cursor()
-            cur.execute(sql, params or None)
-            columns = [d[0] for d in cur.description] if cur.description else []
-            rows = [tuple(r) for r in cur.fetchall()]
-        finally:
-            conn.close()
-        return QueryResult(columns=columns, rows=rows)
+
+        def _do() -> QueryResult:
+            conn = self._connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(sql, params or None)
+                columns = [d[0] for d in cur.description] if cur.description else []
+                rows = [tuple(r) for r in cur.fetchall()]
+            finally:
+                conn.close()
+            return QueryResult(columns=columns, rows=rows)
+
+        return self._with_retry(_do)
 
     def explain(self, sql: str, params: dict[str, Any] | None = None) -> str:
         """Run EXPLAIN (Snowflake plan, no execution). Raises on error; the message feeds the
         repair loop."""
         assert_read_only(sql)
-        conn = self._connect()
-        try:
-            cur = conn.cursor()
-            cur.execute(f"EXPLAIN USING TEXT {sql}", params or None)
-            return "\n".join(str(r[0]) for r in cur.fetchall())
-        finally:
-            conn.close()
+
+        def _do() -> str:
+            conn = self._connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(f"EXPLAIN USING TEXT {sql}", params or None)
+                return "\n".join(str(r[0]) for r in cur.fetchall())
+            finally:
+                conn.close()
+
+        return self._with_retry(_do)
