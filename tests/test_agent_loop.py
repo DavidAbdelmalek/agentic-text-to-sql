@@ -9,6 +9,7 @@ spinning forever. The routers are also unit-tested directly.
 from __future__ import annotations
 
 from agentic_text_to_sql.agent.graph import build_graph
+from agentic_text_to_sql.agent.llm import CANNOT_ANSWER, MockLLM
 from agentic_text_to_sql.agent.nodes import AgentNodes, render_schema
 from agentic_text_to_sql.config import Settings
 from agentic_text_to_sql.db.read_only_client import QueryResult
@@ -123,3 +124,34 @@ def test_route_after_repair_is_bounded(tiny_layer: SemanticLayer) -> None:
     assert nodes.route_after_repair({"repair_attempts": 2}) == "generate"
     # Budget spent (attempts exceeds max) -> give up.
     assert nodes.route_after_repair({"repair_attempts": 3}) == "give_up"
+
+
+# --------------------------------------------------------------------------- refusal
+def test_refusal_path_surfaces_cannot_answer(tiny_layer: SemanticLayer) -> None:
+    """When the model emits the CANNOT_ANSWER sentinel (schema can't answer the question),
+    summarize must surface a refusal and set failed=True — and must NOT call the LLM to narrate
+    the sentinel row as if it were data."""
+    refusal_sql = f"SELECT '{CANNOT_ANSWER}' AS status, 'no profit or sales-rep data' AS reason"
+    result = QueryResult(
+        columns=["status", "reason"], rows=[(CANNOT_ANSWER, "no profit or sales-rep data")]
+    )
+    llm = FakeLLM(refusal_sql)
+    client = FakeClient(result=result)
+    graph = build_graph(_nodes(llm, client, tiny_layer))
+
+    final = graph.invoke({"question": "profit margin per sales rep", "repair_attempts": 0})
+
+    assert final.get("failed") is True
+    assert "can't answer" in final["answer"].lower()
+    assert llm.summarize_calls == 0  # a refusal is not narrated
+
+
+def test_mock_llm_refuses_missing_concepts() -> None:
+    """The deterministic MockLLM must REFUSE questions about concepts the schema lacks, so the
+    refusal behaviour is reproducible offline (CLI mock mode + eval mock mode)."""
+    mock = MockLLM()
+    for q in ("profit margin per sales rep", "total cost by product", "inventory levels"):
+        assert CANNOT_ANSWER in mock.generate_sql(q, schema_context="", error=None)
+    # An answerable question still yields a real query, not a refusal.
+    answerable = mock.generate_sql("revenue by country", schema_context="", error=None)
+    assert CANNOT_ANSWER not in answerable

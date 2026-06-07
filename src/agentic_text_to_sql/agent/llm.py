@@ -124,6 +124,25 @@ class MockLLM:
     ]
     DEFAULT_SQL = "SELECT ROUND(SUM(revenue_gbp), 2) AS total_revenue_gbp FROM fct_sales"
 
+    # Concepts the star schema has no column for. A question about any of these must REFUSE
+    # (return the CANNOT_ANSWER sentinel), never invent a proxy — mirrors the real prompt rule 3.
+    _MISSING_CONCEPTS = (
+        "profit",
+        "margin",
+        "cost",
+        "discount",
+        "tax",
+        "sales rep",
+        "sales-rep",
+        "supplier",
+        "inventory",
+    )
+    REFUSAL_SQL = (
+        f"SELECT '{CANNOT_ANSWER}' AS status, "
+        "'schema has no profit, cost, discount, tax, sales-rep, supplier, or inventory data' "
+        "AS reason"
+    )
+
     def classify(self, question: str) -> str:
         q = question.lower()
         if any(w in q for w in ("trend", "month", "year", "over time")):
@@ -137,7 +156,10 @@ class MockLLM:
     _WORD_MAP = {"monthly": "month", "yearly": "year", "countries": "country", "sales": "revenue"}
 
     def generate_sql(self, question: str, schema_context: str, error: str | None) -> str:
-        words = set(re.findall(r"[a-z]+", question.lower()))
+        q = question.lower()
+        if any(concept in q for concept in self._MISSING_CONCEPTS):
+            return self.REFUSAL_SQL
+        words = set(re.findall(r"[a-z]+", q))
         words |= {w.rstrip("s") for w in words}  # plural-tolerant
         words |= {self._WORD_MAP[w] for w in list(words) if w in self._WORD_MAP}
         for required, sql in self.FIXTURES:
