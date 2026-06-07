@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings~=2.4",
     "fastapi~=0.115",
     "uvicorn~=0.30",
+    "gunicorn~=23.0",  # production ASGI server (with uvicorn workers) in the container
     "typer~=0.12",
     "httpx~=0.27",
     "tenacity~=9.0",

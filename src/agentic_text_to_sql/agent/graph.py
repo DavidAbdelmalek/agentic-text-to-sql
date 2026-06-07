@@ -21,6 +21,7 @@ identifier guard is the real anti-hallucination control. The vector retriever st
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -63,7 +64,8 @@ def build_graph(nodes: AgentNodes) -> Any:
 
 def build_default_nodes(settings: Settings | None = None) -> AgentNodes:
     settings = settings or get_settings()
-    layer: SemanticLayer = load_semantic_layer()
+    layer_path = Path(settings.semantic_layer_path) if settings.semantic_layer_path else None
+    layer: SemanticLayer = load_semantic_layer(layer_path)
     all_tables = [t.name for t in layer.tables]
     return AgentNodes(
         settings=settings,

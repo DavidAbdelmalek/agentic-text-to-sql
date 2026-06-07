@@ -21,8 +21,11 @@ switch ($Target) {
     "test"       { uv run pytest }
     "eval"       { uv run python -m agentic_text_to_sql.eval }
     "eval-smoke" { uv run python -m agentic_text_to_sql.eval --smoke }
+    "drift"      { uv run python scripts/generate_semantic_layer.py --check }
     "run-api"    { uv run uvicorn agentic_text_to_sql.api:app --reload }
     "run-cli"    { uv run ttsql ask "$Q" }
-    "ci"         { uv run ruff check src tests; uv run ruff format --check src tests; uv run mypy; uv run pytest -m "not integration" }
+    "docker-build" { docker build -t agentic-text-to-sql . }
+    "docker-run" { docker run --rm -p 8000:8000 --env-file .env agentic-text-to-sql }
+    "ci"         { uv run ruff check src tests; uv run ruff format --check src tests; uv run mypy; uv run python scripts/generate_semantic_layer.py --check; uv run pytest -m "not integration" }
     default      { Write-Output "unknown target '$Target'. Run ./tasks.ps1 help" }
 }

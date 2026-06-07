@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     sql_default_row_limit: int = 1000
     sql_statement_timeout_ms: int = 5000
 
+    # Override the semantic-layer YAML location. Defaults to data/semantic/semantic_layer.yaml
+    # (repo layout); set SEMANTIC_LAYER_PATH in the container, where the repo root doesn't exist.
+    semantic_layer_path: str | None = None
+
     @property
     def llm_enabled(self) -> bool:
         """True when the real (Cortex) model can be reached. Eval falls back to mock otherwise."""

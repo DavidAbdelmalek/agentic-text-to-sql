@@ -1,0 +1,39 @@
+# Keep the build context small + never ship secrets or local state into the image.
+.git
+.github
+.venv
+.uv
+**/__pycache__
+*.py[cod]
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+
+# Secrets + local env (creds are injected at runtime, never baked)
+.env
+*.key
+*.pem
+secrets/
+
+# Not needed at runtime (LLM is in-warehouse; data is loaded/modeled out of band)
+dbt/
+data/
+# ...except the generated semantic layer, which the agent loads at startup.
+!data/semantic/semantic_layer.yaml
+docs/
+scripts/
+terraform/
+tests/
+notebooks/
+logs/
+*.log
+
+# Dev config
+.claude/
+CLAUDE.md
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
