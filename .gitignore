@@ -28,13 +28,6 @@ dbt/logs/
 dbt/.user.yml
 # dbt/profiles.yml IS committed — it reads only env vars (no secrets).
 
-# Terraform
-**/.terraform/*
-*.tfstate
-*.tfstate.*
-*.tfvars
-!*.tfvars.example
-
 # Generated artifacts
 data/semantic/raw_schema.json
 data/eval/results/

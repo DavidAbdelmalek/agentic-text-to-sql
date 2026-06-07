@@ -62,7 +62,7 @@ the execution-accuracy eval exist.
 | Tracing | Langfuse | per-node spans, inputs/outputs, repair counts |
 | Eval | custom harness | execution accuracy + struct similarity + retrieval |
 | Interfaces | FastAPI + Typer CLI | `/ask` endpoint and `ttsql ask` |
-| IaC | Terraform | Snowflake read-only role |
+| Packaging | Docker (multi-stage, gunicorn) | deployable container image |
 
 ## Build pipeline (semantic layer is generated)
 
@@ -83,7 +83,6 @@ src/agentic_text_to_sql/   agent graph, nodes, semantic_layer, sql_guard, db (sn
 dbt/                       Kimball star + tests · _semantic_models.yml (dbt Semantic Layer)
 data/semantic|eval/        generated semantic layer, gold set
 scripts/                   snowflake provision/verify · generate_semantic_layer.py · node-by-node debug harness
-terraform/snowflake/       read-only AGENT_RO role as IaC
 tests/                     pytest unit + integration
 docs/                      this file + DECISIONS.md
 ```

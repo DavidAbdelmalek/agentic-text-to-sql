@@ -189,7 +189,7 @@ accuracy — exactly why structural similarity is a secondary diagnostic, never 
 | Modeling | **dbt** (dbt-snowflake) + **dbt Fusion** (Rust engine) · **dbt Semantic Layer** |
 | Observability | **Langfuse** (per-node traces + eval scores) |
 | Interfaces | **FastAPI** (`POST /ask`) · **Typer** CLI (`ttsql ask`) |
-| IaC | **Terraform** (Snowflake read-only role) |
+| Packaging | **Docker** (multi-stage, gunicorn) |
 | Tooling | **uv**, ruff, mypy --strict, pytest, GitHub Actions |
 
 ## Repo layout
@@ -199,7 +199,6 @@ src/        agent graph + nodes · semantic_layer · sql_guard · read-only Snow
 dbt/        Kimball star + tests · _semantic_models.yml (dbt Semantic Layer)
 data/       generated semantic_layer.yaml · eval gold set
 scripts/    snowflake provisioning/verify · generate_semantic_layer.py · node-by-node debug harness
-terraform/  Snowflake read-only role as IaC
 docs/       ARCHITECTURE.md · DECISIONS.md
 tests/      pytest unit + integration
 ```

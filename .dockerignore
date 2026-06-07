@@ -24,7 +24,6 @@ data/
 !data/semantic/semantic_layer.yaml
 docs/
 scripts/
-terraform/
 tests/
 notebooks/
 logs/

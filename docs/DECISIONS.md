@@ -241,16 +241,15 @@ retriever, no model, key, or network). Structural similarity stays a secondary d
 correct query can look very different from the reference, proven by a gold item scoring 0.91
 similarity while failing execution.
 
-## D16: The read-only role as Terraform (and it ports to Snowflake)
+## D16: The read-only role is provisioned as code, not by hand
 
 The read-only boundary is the system's most important control, so it should not be a one-off
-`GRANT` someone ran by hand. It is expressed as reviewed, version-controlled Terraform.
-`terraform/snowflake` (snowflake-labs/snowflake) creates an `AGENT_RO` account role with `USAGE`
-and `SELECT` on current and future tables and views, plus `CORTEX_USER`, and no write or DDL
-grants anywhere. `terraform validate` is clean. The Postgres variant (cyrilgdn/postgresql) existed
-during the Postgres era and was removed after the move.
+`GRANT` someone ran in a console. `scripts/snowflake_provision.py` creates the `AGENT_RO` account
+role with `USAGE` and `SELECT` on current and future tables and views in the marts schema, plus
+`CORTEX_USER`, and no write or DDL grants anywhere. The script is idempotent and re-runnable, so
+the exact privilege set lives in version control and shows up in a diff when it changes.
 
-Trade-off: Terraform is the production-grade path; the provisioning script
-(`scripts/snowflake_provision.py`) is the zero-config default, and you run one or the other, not
-both, since a role cannot be created twice. This is the "the safety model works on our warehouse,
-as code" answer.
+An earlier Terraform module expressed the same role as Infrastructure-as-Code. It was dropped: it
+duplicated the provisioning script for a single role, and the script is the path actually run.
+The durable point is the one above, that the privilege set is code you can review, not a manual
+grant.
