@@ -31,5 +31,13 @@ jobs:
         run: uv run ruff format --check src tests
       - name: mypy (strict)
         run: uv run mypy
+      - name: semantic-layer drift gate
+        # Regenerate the semantic layer from the committed dbt catalog snapshot +
+        # _semantic_models.yml and fail if it differs from the committed YAML. Runs offline
+        # (no warehouse): the agent's grounding can never silently drift from the dbt models.
+        run: uv run python scripts/generate_semantic_layer.py --check
       - name: pytest (unit, mock, no warehouse)
         run: uv run pytest -m "not integration"
+      # NOTE: the gold-set eval (`python -m agentic_text_to_sql.eval --smoke`) is NOT run here.
+      # It executes reference_sql + the agent's SQL against Snowflake via the read-only client,
+      # so it needs live warehouse credentials. Run it locally (`make eval-smoke`).

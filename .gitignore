@@ -18,7 +18,11 @@ venv/
 htmlcov/
 
 # dbt
-dbt/target/
+dbt/target/*
+# catalog.json IS committed as a pinned schema snapshot so the semantic-layer drift gate
+# (generate_semantic_layer.py --check) can run offline in CI. Regenerate with
+# `dbt compile --write-catalog` when the warehouse schema changes.
+!dbt/target/catalog.json
 dbt/dbt_packages/
 dbt/logs/
 dbt/.user.yml
