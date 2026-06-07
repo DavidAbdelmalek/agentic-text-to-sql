@@ -1,0 +1,36 @@
+# Render blueprint: deploys the API as a free Docker web service with a public HTTPS URL.
+# Connect the repo at https://dashboard.render.com -> New -> Blueprint, then set the
+# `sync: false` secrets in the dashboard (they are NOT stored in this file).
+#
+# The link lands on /docs (Swagger UI). /ask is open (no API key) but rate-limited; keep the
+# AGENT_RO warehouse small with auto-suspend to bound Cortex/compute cost.
+services:
+  - type: web
+    name: agentic-text-to-sql
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: cortex
+      # --- Snowflake (set these as secrets in the Render dashboard) ---
+      - key: GENAI_DBT_SNOWFLAKE_ACCOUNT
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_USER_DEVELOPER
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_ROLE_DEVELOPER
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_WAREHOUSE_DEVELOPER
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_DATABASE_DEVELOPER
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_SCHEMA_DEVELOPER
+        sync: false
+      # Private key as base64 PEM (Render has no file mounts). Generate with:
+      #   base64 -w0 path/to/rsa_key.p8        (Linux/macOS)
+      #   [Convert]::ToBase64String([IO.File]::ReadAllBytes("rsa_key.p8"))   (PowerShell)
+      - key: GENAI_DBT_SNOWFLAKE_PRIVATE_KEY_B64
+        sync: false
+      - key: GENAI_DBT_SNOWFLAKE_PRIVATE_KEY_PASSPHRASE_DEVELOPER
+        sync: false

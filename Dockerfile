@@ -44,16 +44,14 @@ ENV PATH="/app/.venv/bin:$PATH" \
     SEMANTIC_LAYER_PATH=/app/semantic_layer.yaml
 
 USER appuser
+# Bind to $PORT when the host sets one (Render/Cloud Run), else 8000 locally.
+ENV PORT=8000
 EXPOSE 8000
 
-# Liveness probe hits the static /health route.
+# Liveness probe hits the static /health route on whatever port we're bound to.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200 else 1)"
+    CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen(f\"http://127.0.0.1:{os.environ.get('PORT','8000')}/health\").status == 200 else 1)"
 
 # gunicorn + uvicorn workers = a real production ASGI server (not `uvicorn --reload`).
-# Tune workers/timeout via the container runtime if needed.
-CMD ["gunicorn", "agentic_text_to_sql.api:app", \
-     "-k", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "2", \
-     "--timeout", "60"]
+# Shell form so ${PORT} expands. Tune workers/timeout via the container runtime if needed.
+CMD gunicorn agentic_text_to_sql.api:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 60

@@ -155,6 +155,24 @@ No Snowflake handy? The whole graph and the eval run in deterministic **mock mod
 > **Inspect the agent node-by-node:** `uv run python scripts/test_nodes_step_by_step.py "Top 5
 > products by revenue"` prints every node's input → output and the routing decisions.
 
+## Deploy (public link)
+
+The repo ships a multi-stage `Dockerfile` and a `render.yaml` blueprint. To put it on a free
+public URL:
+
+1. Build locally to check it serves: `make docker-build && make docker-run`, then open
+   `http://localhost:8000` (redirects to `/docs`).
+2. On [Render](https://dashboard.render.com): **New → Blueprint**, point it at this repo. It reads
+   `render.yaml` and builds the `Dockerfile`.
+3. Set the `GENAI_DBT_SNOWFLAKE_*` secrets in the dashboard. The private key goes in
+   `GENAI_DBT_SNOWFLAKE_PRIVATE_KEY_B64` (base64 of the PEM — Render has no file mounts):
+   `base64 -w0 rsa_key.p8`.
+4. Open the `*.onrender.com` URL → it lands on `/docs` → run `/ask`.
+
+The container binds `$PORT` (Render/Cloud Run) and falls back to 8000 locally. `/ask` is open in
+this config, protected by the built-in rate limit and statement timeout — keep the `AGENT_RO`
+warehouse extra-small with auto-suspend so a public demo can't run up cost.
+
 ## Models
 
 The LLM is **Snowflake Cortex** (`AI_COMPLETE`), default **`mistral-large2`** (in-region, EU),
