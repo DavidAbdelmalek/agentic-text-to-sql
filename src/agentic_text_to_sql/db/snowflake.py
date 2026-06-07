@@ -30,8 +30,6 @@ _E_PK_PWD = "GENAI_DBT_SNOWFLAKE_PRIVATE_KEY_PASSPHRASE_DEVELOPER"
 RAW_SCHEMA = "TTSQL_RAW"
 MARTS_SCHEMA = "TTSQL"
 AGENT_ROLE = "AGENT_RO"
-# Cortex LLM available in eu-central-1 (Claude needs cross-region; llama/mistral are local).
-DEFAULT_CORTEX_MODEL = "llama3.1-70b"
 
 
 def account() -> str:

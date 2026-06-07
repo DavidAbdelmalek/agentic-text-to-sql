@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from agentic_text_to_sql.config import get_settings
 from agentic_text_to_sql.db import snowflake as sf
 
 
@@ -26,7 +27,7 @@ def main() -> None:
     print("\n=== reads + Cortex must WORK ===")
     cur.execute("select 1+1")
     print("  select ok:", cur.fetchone()[0])
-    cur.execute("select snowflake.cortex.complete(%s, %s)", (sf.DEFAULT_CORTEX_MODEL, "Say OK"))
+    cur.execute("select ai_complete(%s, %s)", (get_settings().cortex_model, "Say OK"))
     print("  cortex ok:", str(cur.fetchone()[0]).strip()[:40])
     con.close()
 
