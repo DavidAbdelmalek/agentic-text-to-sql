@@ -48,6 +48,27 @@ def test_repair_injects_limit_when_missing(tiny_layer: SemanticLayer) -> None:
 @pytest.mark.parametrize(
     "sql",
     [
+        # A UNION with no top-level LIMIT (even if one arm is limited) must still be capped.
+        "SELECT c.country FROM dim_country c UNION SELECT c.country FROM dim_country c",
+        "SELECT c.country FROM dim_country c LIMIT 5 UNION SELECT c.country FROM dim_country c",
+        # A subquery whose outer query has no LIMIT must be capped.
+        "SELECT country FROM (SELECT c.country AS country FROM dim_country c) sub",
+    ],
+    ids=["union", "union_one_arm_limited", "subquery"],
+)
+def test_repair_caps_set_ops_and_subqueries(sql: str, tiny_layer: SemanticLayer) -> None:
+    """Row output of set-operations and subqueries is bounded: a missing top-level LIMIT is
+    repaired by injection, so an unbounded UNION/subquery can never reach the warehouse uncapped.
+    (Inner-subquery scan cost is a separate control: STATEMENT_TIMEOUT + warehouse sizing.)"""
+    result = sql_guard.review(sql, _allowed(tiny_layer), _LIMIT)
+    assert result.verdict == Verdict.REPAIR
+    assert result.repaired_sql is not None
+    assert str(_LIMIT) in result.repaired_sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
         "DELETE FROM fct_sales",
         "UPDATE fct_sales SET revenue_gbp = 0",
         "INSERT INTO fct_sales (sales_key) VALUES (1)",
