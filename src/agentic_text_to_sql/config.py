@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # (repo layout); set SEMANTIC_LAYER_PATH in the container, where the repo root doesn't exist.
     semantic_layer_path: str | None = None
 
+    # --- API (FastAPI /ask) ---
+    # Static API key required on /ask when set. Unset = open (local/dev) — production MUST set it.
+    api_key: str | None = None
+    api_rate_limit: str = "10/minute"  # slowapi per-client limit on /ask
+    request_timeout_s: int = 30  # hard cap on a single /ask (agent + warehouse round trip)
+
     @property
     def llm_enabled(self) -> bool:
         """True when the real (Cortex) model can be reached. Eval falls back to mock otherwise."""
