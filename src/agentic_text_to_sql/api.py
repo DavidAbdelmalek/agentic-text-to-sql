@@ -7,6 +7,7 @@ a static API key (when configured), a per-client rate limit, and a hard request 
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
@@ -19,6 +20,7 @@ from slowapi.util import get_remote_address
 from agentic_text_to_sql.agent.graph import run_agent
 from agentic_text_to_sql.config import get_settings
 
+logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="agentic-text-to-sql", version="0.1.0")
@@ -78,6 +80,14 @@ async def ask(request: Request, req: AskRequest, _: None = Depends(require_api_k
     except TimeoutError:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="agent timed out"
+        ) from None
+    except Exception:
+        # Log the full trace server-side; return a generic message so internals (SQL,
+        # connection details, stack traces) never leak to the client.
+        logger.exception("agent run failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="internal error running the agent",
         ) from None
     return AskResponse(
         question=req.question,

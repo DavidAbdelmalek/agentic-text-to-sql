@@ -40,3 +40,17 @@ def test_ask_validates_body() -> None:
     """Missing question -> 422 from pydantic, never reaching the agent."""
     r = client.post("/ask", json={})
     assert r.status_code == 422
+
+
+def test_ask_handles_agent_error_without_leaking(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the agent raises, the client gets a generic 500 with no internals (the raised
+    message, SQL, or stack trace) in the body."""
+
+    def boom(question: str) -> dict[str, object]:
+        raise RuntimeError("secret connection string leaked here")
+
+    monkeypatch.setattr("agentic_text_to_sql.api.run_agent", boom)
+    r = client.post("/ask", json={"question": "anything"})
+    assert r.status_code == 500
+    assert "secret connection string" not in r.text
+    assert r.json()["detail"] == "internal error running the agent"
