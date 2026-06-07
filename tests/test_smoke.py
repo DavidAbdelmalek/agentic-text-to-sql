@@ -12,8 +12,9 @@ def test_version() -> None:
 
 
 def test_settings_load_with_safe_defaults() -> None:
-    # Ignore any local .env so the test validates the code defaults, not the dev's machine.
+    # Ignore any local .env so a stale file can't break the suite. (Env vars still apply, e.g.
+    # CI sets LLM_PROVIDER=mock — so accept either valid provider, not just the default.)
     s = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert s.llm_provider == "cortex"
+    assert s.llm_provider in {"cortex", "mock"}
     assert s.sql_max_repair_retries >= 0
     assert s.sql_default_row_limit > 0
