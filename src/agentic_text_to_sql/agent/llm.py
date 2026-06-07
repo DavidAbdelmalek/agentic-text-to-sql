@@ -12,12 +12,39 @@ Design:
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Protocol
 
 from agentic_text_to_sql.config import Settings
 
 _FENCE = re.compile(r"```(?:sql)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
+
+def _unwrap_completion(value: object) -> str:
+    """AI_COMPLETE with model_parameters returns the completion as a JSON value: usually the
+    message text JSON-encoded (i.e. wrapped in quotes), sometimes a {"choices":[{"messages":...}]}
+    object. Unwrap both to bare text. A plain (non-JSON) string passes through unchanged."""
+    if value is None:
+        return ""
+    text = str(value)
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return text
+    if isinstance(parsed, str):
+        return parsed
+    if isinstance(parsed, dict):
+        choices = parsed.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            msg = choices[0].get("messages") or choices[0].get("message")
+            if isinstance(msg, str):
+                return msg
+        msg = parsed.get("messages")
+        if isinstance(msg, str):
+            return msg
+    return text
+
 
 # Sentinel the model must emit when the schema cannot answer the question. The agent detects
 # it (see nodes.summarize) and reports a refusal instead of a confidently-wrong number.
@@ -73,9 +100,13 @@ def _build_sql_user(schema_context: str, question: str, error: str | None) -> st
 
 
 def _extract_sql(text: str) -> str:
-    """Pull a bare SQL statement out of a model response (strip ``` fences / prose)."""
+    """Pull a bare SQL statement out of a model response (strip ``` fences / prose / wrapping
+    quotes)."""
     m = _FENCE.search(text)
     sql = (m.group(1) if m else text).strip()
+    # Some responses wrap the whole statement in a matching quote pair; drop one if present.
+    if len(sql) >= 2 and sql[0] == sql[-1] and sql[0] in "\"'":
+        sql = sql[1:-1].strip()
     # Drop a trailing semicolon so it stays a single statement for the guard.
     return sql.rstrip(";").strip()
 
@@ -196,7 +227,7 @@ class CortexLLM:
             (self._model, prompt, max_tokens),
         )
         row = cur.fetchone()
-        return str(row[0]) if row else ""
+        return _unwrap_completion(row[0]) if row else ""
 
     def classify(self, question: str) -> str:
         out = self._complete(
