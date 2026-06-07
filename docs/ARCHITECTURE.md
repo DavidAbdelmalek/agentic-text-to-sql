@@ -51,7 +51,7 @@ the execution-accuracy eval exist.
 | Component | Tech | Role |
 |---|---|---|
 | Agent graph | LangGraph + LangChain | multi-step orchestration with explicit state + edges |
-| LLM | Snowflake Cortex (`COMPLETE`) | in-warehouse generation; pluggable OpenAI/Anthropic/mock |
+| LLM | Snowflake Cortex (`AI_COMPLETE`) | in-warehouse generation; offline `MockLLM` for CI/tests |
 | Semantic layer | generated YAML | grounds the generator + the guard's allowed identifiers |
 | Guardrail | sqlglot + EXPLAIN | static + plan-level safety gate |
 | DB access | snowflake-connector (read-only role) | only path to data; SELECT/EXPLAIN only |

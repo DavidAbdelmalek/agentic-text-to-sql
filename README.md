@@ -46,6 +46,38 @@ an explicit, bounded cycle** in the graph edges — neither is expressible insid
 call. Every node is traced to Langfuse. Full diagram: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md);
 every trade-off: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
+## What happens to the generated SQL
+
+The model writes SQL as text, and that text never runs directly against the warehouse. It is
+treated as untrusted and passes two checks before execution.
+
+```
+AI_COMPLETE returns SQL text
+   │
+_extract_sql        strip ``` fences and trailing ;            (Python)
+   │
+state["sql"]        store the candidate
+   │
+guard ─ sql_guard   parse; reject DDL/DML; every table and
+   │                column must exist in the semantic layer;
+   │                inject a LIMIT if missing                  (Python, no warehouse)
+   │
+guard ─ EXPLAIN     Snowflake validates the plan, runs nothing (Snowflake)
+   │
+   ├─ any error → repair → back to generate with the error fed in (bounded, max 2)
+   │
+execute             runs for real, returns rows                (Snowflake, AGENT_RO role)
+   │
+summarize           rows → English answer (AI_COMPLETE #2)      (Snowflake)
+   │
+END
+```
+
+The point: the model only proposes a query. The static guard catches hallucinated columns and
+anything that is not a read-only SELECT. EXPLAIN confirms the plan is valid without scanning data.
+The read-only `AGENT_RO` role is the wall the model can never pass. The LLM never touches the data
+directly; it emits a candidate that the guards vet before it runs.
+
 ## The safety model (the headline)
 
 | Layer | Mechanism | Can it fail open? |
@@ -125,10 +157,11 @@ No Snowflake handy? The whole graph and the eval run in deterministic **mock mod
 
 ## Models
 
-The LLM is **Snowflake Cortex** (`SNOWFLAKE.CORTEX.COMPLETE`), default **`mistral-large2`**
-(in-region, EU). Claude is reachable in Cortex via cross-region inference (`claude-4-sonnet`).
-The provider is pluggable — `OpenAI`, `Anthropic`, and a deterministic `MockLLM` are also wired,
-so the same graph can A/B different model backends on the same eval.
+The LLM is **Snowflake Cortex** (`AI_COMPLETE`), default **`mistral-large2`** (in-region, EU),
+called with `temperature: 0` for deterministic SQL. Claude and other models are reachable in
+Cortex via cross-region inference by changing `CORTEX_MODEL`. The only other backend is a
+deterministic `MockLLM` that runs the whole graph offline with no warehouse and no key, which is
+the CI and test path.
 
 ## Evaluation
 
@@ -151,7 +184,7 @@ accuracy — exactly why structural similarity is a secondary diagnostic, never 
 | Area | Tools |
 |---|---|
 | Agent | **LangGraph**, LangChain, `sqlglot` (SQL parse/guard) |
-| LLM | **Snowflake Cortex** (`COMPLETE`) · pluggable: OpenAI / Anthropic / mock |
+| LLM | **Snowflake Cortex** (`AI_COMPLETE`) · offline `MockLLM` for CI/tests |
 | Warehouse | **Snowflake** (read-only `AGENT_RO` role; key-pair auth) |
 | Modeling | **dbt** (dbt-snowflake) + **dbt Fusion** (Rust engine) · **dbt Semantic Layer** |
 | Observability | **Langfuse** (per-node traces + eval scores) |

@@ -15,9 +15,11 @@ I have a Snowflake account, so the warehouse moved off local Postgres onto Snowf
 LLM moved into the warehouse through Snowflake Cortex (`COMPLETE`). The agent connects only as
 the read-only `AGENT_RO` role, which has `SELECT` plus `CORTEX_USER`. That one role both reads
 the data and runs the model, so no rows leave Snowflake and there is no external API key. The
-default model is `mistral-large2` (in-region, EU); Claude is reachable through cross-region
-inference (`claude-4-sonnet`). The provider stays pluggable (OpenAI, Anthropic, mock) behind the
-same `LLM` interface, so the same graph can compare model backends.
+default model is `mistral-large2` (in-region, EU); Claude and other models are reachable through
+cross-region inference by changing `CORTEX_MODEL`. The only non-Cortex backend is a deterministic
+mock behind the same `LLM` interface, which runs the whole graph offline for CI and tests. I
+dropped the earlier OpenAI and Anthropic SDK providers once Cortex became the only real target,
+since maintaining cloud-API backends added dependencies and config for a path I no longer use.
 
 Trade-off: Cortex's model menu depends on the region (no local Claude in eu-central without
 cross-region), and CI can no longer spin up a free containerised database, so CI is now offline

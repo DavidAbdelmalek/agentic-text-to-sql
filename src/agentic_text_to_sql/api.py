@@ -4,11 +4,18 @@ exposed over HTTP. Tracing to Langfuse happens inside run_agent when configured.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from agentic_text_to_sql.agent.graph import run_agent
 
 app = FastAPI(title="agentic-text-to-sql", version="0.1.0")
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Bare URL -> interactive API docs."""
+    return RedirectResponse(url="/docs")
 
 
 class AskRequest(BaseModel):

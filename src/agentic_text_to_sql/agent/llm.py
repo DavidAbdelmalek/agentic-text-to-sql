@@ -6,14 +6,14 @@ Design:
 - MockLLM runs the whole graph offline — no API key, no local model, no network. It is the
   CI/offline path and the eval's mock mode. It returns real, guardrail-valid SQL for a small
   set of canonical questions and a safe default otherwise.
-- Cortex (Snowflake, in-warehouse, default) is the real provider; OpenAI/Azure/Anthropic
-  (cloud, via env) are alternates used for the model A/B benchmark.
+- Cortex (Snowflake, in-warehouse) is the only real provider: the LLM runs inside the
+  warehouse, so no data leaves it and there is no external API key.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, Protocol
+from typing import Protocol
 
 from agentic_text_to_sql.config import Settings
 
@@ -149,106 +149,6 @@ class MockLLM:
         return f"Result for: {question}\n{result_preview}"
 
 
-# --------------------------------------------------------------------------- OpenAI / Azure
-class OpenAILLM:
-    _model: Any
-
-    def __init__(self, settings: Settings) -> None:
-        if settings.llm_provider == "azure":
-            from langchain_openai import AzureChatOpenAI
-
-            self._model = AzureChatOpenAI(
-                azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,  # type: ignore[arg-type]
-                azure_deployment=settings.azure_openai_deployment,
-                api_version="2024-06-01",
-                temperature=0,
-            )
-        else:
-            from langchain_openai import ChatOpenAI
-
-            self._model = ChatOpenAI(
-                model=settings.llm_model,
-                api_key=settings.openai_api_key,  # type: ignore[arg-type]
-                base_url=settings.openai_base_url or None,
-                temperature=0,
-            )
-
-    def _chat(self, system: str, user: str) -> str:
-        resp = self._model.invoke([("system", system), ("user", user)])
-        return str(resp.content)
-
-    def classify(self, question: str) -> str:
-        out = self._chat(
-            "Classify the question as one word: lookup, aggregate, or trend.", question
-        )
-        return out.strip().lower().split()[0] if out.strip() else "aggregate"
-
-    def generate_sql(self, question: str, schema_context: str, error: str | None) -> str:
-        user = _build_sql_user(schema_context, question, error)
-        return _extract_sql(self._chat(_SQL_SYSTEM, user))
-
-    def summarize(self, question: str, result_preview: str) -> str:
-        return self._chat(
-            "Answer the question in one or two sentences using the result rows, with numbers.",
-            f"Question: {question}\n\nResult:\n{result_preview}",
-        )
-
-
-# --------------------------------------------------------------------------- Anthropic
-class AnthropicLLM:
-    """Anthropic Claude via the official `anthropic` SDK.
-
-    Notes (defensible choices):
-    - No `temperature`/`top_p` is sent: those are removed on Opus 4.8/4.7 (would 400), and we
-      want one provider that works across Claude models. Determinism for SQL isn't materially
-      worse without it.
-    - Thinking is left off (default) — SQL generation is a single, well-scoped call, not a
-      reasoning task; this keeps it fast and cheap.
-    - Prompt caching is intentionally NOT used: our prompts are well under Claude's ~1024–4096
-      token minimum cacheable prefix, so a cache breakpoint would only add a write premium with
-      zero reads. (See the prompt-caching minimums — caching pays off for large shared prefixes.)
-    """
-
-    _client: Any
-
-    def __init__(self, settings: Settings) -> None:
-        import anthropic
-
-        # SDK resolves ANTHROPIC_API_KEY from the env if api_key is None.
-        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self._model = settings.llm_model
-
-    def _chat(self, system: str, user: str, max_tokens: int) -> str:
-        resp = self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        return "".join(b.text for b in resp.content if b.type == "text")
-
-    def classify(self, question: str) -> str:
-        out = self._chat(
-            "Classify the question as one word: lookup, aggregate, or trend. Reply with the "
-            "word only.",
-            question,
-            max_tokens=16,
-        )
-        return out.strip().lower().split()[0] if out.strip() else "aggregate"
-
-    def generate_sql(self, question: str, schema_context: str, error: str | None) -> str:
-        user = _build_sql_user(schema_context, question, error)
-        return _extract_sql(self._chat(_SQL_SYSTEM, user, max_tokens=1024))
-
-    def summarize(self, question: str, result_preview: str) -> str:
-        return self._chat(
-            "Answer the question in one or two sentences using the result rows, with numbers.",
-            f"Question: {question}\n\nResult:\n{result_preview}",
-            max_tokens=512,
-        )
-
-
 # --------------------------------------------------------------------------- Snowflake Cortex
 class CortexLLM:
     """Snowflake Cortex — the LLM runs IN the warehouse via SNOWFLAKE.CORTEX.COMPLETE, called
@@ -263,10 +163,16 @@ class CortexLLM:
         # One persistent read-only connection, reused across the run.
         self._conn = sf.connect(role=sf.AGENT_ROLE, schema=sf.MARTS_SCHEMA)
 
-    def _complete(self, system: str, user: str) -> str:
+    def _complete(self, system: str, user: str, max_tokens: int = 1024) -> str:
         prompt = f"{system}\n\n{user}"
         cur = self._conn.cursor()
-        cur.execute("select snowflake.cortex.complete(%s, %s)", (self._model, prompt))
+        # AI_COMPLETE is Snowflake's current Cortex completion function (supersedes
+        # CORTEX.COMPLETE). temperature 0 => deterministic SQL, so the same question yields the
+        # same query (reproducible eval). model + prompt are bound; the options object is inlined.
+        cur.execute(
+            "select ai_complete(%s, %s, {'temperature': 0, 'max_tokens': %s})",
+            (self._model, prompt, max_tokens),
+        )
         row = cur.fetchone()
         return str(row[0]) if row else ""
 
@@ -290,14 +196,8 @@ class CortexLLM:
 
 
 def get_llm(settings: Settings) -> LLM:
-    """Pick a provider. Falls back to the deterministic MockLLM whenever a real model can't be
-    reached, so the graph (and eval) always run."""
-    if not settings.llm_enabled:
-        return MockLLM()
-    if settings.llm_provider == "cortex":
+    """Pick a provider. Cortex is the only real backend; everything else (including unset creds)
+    falls back to the deterministic MockLLM so the graph (and eval) always run."""
+    if settings.llm_enabled and settings.llm_provider == "cortex":
         return CortexLLM(settings)
-    if settings.llm_provider == "anthropic":
-        return AnthropicLLM(settings)
-    if settings.llm_provider in ("openai", "azure"):
-        return OpenAILLM(settings)
     return MockLLM()

@@ -56,7 +56,7 @@ def execution_accuracy(
 
 def _normalize_sql(sql: str) -> str:
     try:
-        return sqlglot.parse_one(sql, read="postgres").sql(normalize=True, comments=False).lower()
+        return sqlglot.parse_one(sql, read="snowflake").sql(normalize=True, comments=False).lower()
     except Exception:  # noqa: BLE001
         return sql.strip().lower()
 
