@@ -108,7 +108,7 @@ class AgentNodes:
             msg = f"I can't answer that from this data: {rows[0][1]}."
             return {"answer": msg, "failed": True}
         preview = _render_rows(cols, rows)
-        return {"answer": self.llm.summarize(state["question"], preview)}
+        return {"answer": self.llm.summarize(state["question"], preview).strip()}
 
     def give_up(self, state: AgentState) -> AgentState:
         """Repair budget exhausted. Return failure with last error."""

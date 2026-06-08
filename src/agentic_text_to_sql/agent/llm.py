@@ -243,7 +243,8 @@ class CortexLLM:
 
     def summarize(self, question: str, result_preview: str) -> str:
         return self._complete(
-            "Answer the question in one or two sentences using the result rows, with numbers.",
+            "Answer the question in one or two sentences of plain prose, using the numbers from "
+            "the result rows. Do not use lists, bullet points, numbering, or line breaks.",
             f"Question: {question}\n\nResult:\n{result_preview}",
         )
 
